@@ -223,10 +223,66 @@ class ScoopAgent:
             self._sessions[user_id] = []
         return self._sessions[user_id]
     
+    # ==================== Security Guardrails ====================
+    
+    # Blocked dangerous keywords
+    BLOCKED_KEYWORDS = {
+        # Illegal substances
+        "steroid", "სტეროიდ", "anabolic", "ანაბოლიკ",
+        "testosterone", "ტესტოსტერონ", "hgh", "sarm",
+        # Hacking/Abuse
+        "hack", "inject", "exploit", "bypass", "jailbreak",
+        "ignore previous", "ignore instructions", "disregard",
+        # Medical danger
+        "overdose", "suicide", "kill", "die",
+    }
+    
+    # Prompt injection patterns
+    INJECTION_PATTERNS = [
+        "ignore all previous",
+        "forget your instructions",
+        "you are now",
+        "act as if",
+        "pretend you are",
+        "system prompt",
+        "new instructions",
+    ]
+    
+    def _security_check(self, message: str) -> Optional[str]:
+        """
+        Check message for security violations.
+        Returns error message if blocked, None if safe.
+        """
+        message_lower = message.lower()
+        
+        # Check length
+        if len(message) > 5000:
+            return "შეტყობინება ძალიან გრძელია. გთხოვთ, შეამოკლოთ."
+        
+        # Check blocked keywords
+        for keyword in self.BLOCKED_KEYWORDS:
+            if keyword in message_lower:
+                return "სამწუხაროდ, ჩვენ მხოლოდ ლეგალურ სპორტულ დანამატებზე ვაძლევთ რჩევებს."
+        
+        # Check prompt injection
+        for pattern in self.INJECTION_PATTERNS:
+            if pattern in message_lower:
+                logger.warning(f"Prompt injection attempt: {pattern}")
+                return "რით შემიძლია დაგეხმაროთ სპორტულ კვებასთან დაკავშირებით?"
+        
+        return None  # Safe
+    
     async def chat(self, user_id: str, message: str) -> str:
         """
         Process a chat message with agentic tool loop.
+        Includes security guardrails.
         """
+        # ==================== Security Check ====================
+        security_result = self._security_check(message)
+        if security_result:
+            logger.warning(f"Security block for {user_id}: {security_result}")
+            return security_result
+        
         messages = self._get_messages(user_id)
         messages.append({"role": "user", "content": message})
         
