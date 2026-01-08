@@ -1,14 +1,13 @@
 """
 Scoop AI Agent - FastAPI Server with MongoDB.
 
-Main entry point for the sports nutrition assistant
-powered by Claude Agent SDK with MongoDB integration.
+Optimized for Cloud Run + Botpress Integration.
 """
 
 import logging
 import os
 from contextlib import asynccontextmanager
-from typing import Optional
+from typing import Optional, List
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -69,7 +68,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="Scoop AI Agent",
     description="ქართული სპორტული კვების კონსულტანტი - Claude Agent SDK + MongoDB",
-    version="1.1.0",
+    version="1.2.0",
     lifespan=lifespan
 )
 
@@ -86,15 +85,22 @@ app.add_middleware(
 # ==================== Request/Response Models ====================
 
 class ChatRequest(BaseModel):
+    """Chat request - compatible with Botpress."""
     user_id: str = Field(..., description="Unique user identifier")
     message: str = Field(..., description="User message", min_length=1, max_length=5000)
+    # Optional: session management
+    conversation_id: Optional[str] = None
 
 
 class ChatResponse(BaseModel):
+    """Chat response - optimized for Botpress integration."""
     user_id: str
     response: str
     success: bool = True
     error: Optional[str] = None
+    # Botpress-friendly fields
+    text: str = ""  # Duplicate of response for Botpress
+    choices: Optional[List[str]] = None  # Quick replies
 
 
 class HealthResponse(BaseModel):
@@ -112,21 +118,21 @@ async def root():
     return {
         "name": "Scoop AI Agent",
         "description": "სპორტული კვების კონსულტანტი",
-        "version": "1.1.0",
-        "features": ["Claude Agent SDK", "MongoDB", "MCP Tools"],
+        "version": "1.2.0",
+        "features": ["Claude Agent SDK", "MongoDB", "MCP Tools", "Botpress Ready"],
         "docs": "/docs"
     }
 
 
 @app.get("/health", response_model=HealthResponse)
 async def health_check():
-    """Health check endpoint."""
+    """Health check endpoint for Cloud Run."""
     agent = get_agent()
-    db_status = "connected" if db_manager.is_connected else "disconnected (using mock)"
+    db_status = "connected" if db_manager.is_connected else "disconnected"
     
     return HealthResponse(
         status="healthy",
-        version="1.1.0",
+        version="1.2.0",
         database=db_status,
         active_sessions=len(agent.get_active_sessions())
     )
@@ -137,27 +143,37 @@ async def chat(request: ChatRequest):
     """
     Main chat endpoint.
     
-    Send a message and receive the agent's response.
-    Session is automatically maintained per user_id.
+    Botpress Integration:
+    - Send: {"user_id": "bp_xxx", "message": "..."}
+    - Receive: {"response": "...", "text": "...", "choices": [...]}
     """
     try:
         agent = get_agent()
         
         logger.info(f"Chat request from {request.user_id}: {request.message[:50]}...")
         
-        response = await agent.chat(request.user_id, request.message)
+        response_text = await agent.chat(request.user_id, request.message)
+        
+        # Extract quick reply suggestions (if any)
+        choices = None
+        if "მაგალითად:" in response_text or "შეგიძლიათ:" in response_text:
+            choices = ["პროტეინი", "კრეატინი", "BCAA", "ვიტამინები"]
         
         return ChatResponse(
             user_id=request.user_id,
-            response=response,
+            response=response_text,
+            text=response_text,  # Botpress reads this
+            choices=choices,
             success=True
         )
     
     except Exception as e:
         logger.error(f"Chat error for {request.user_id}: {e}")
+        error_msg = "სამწუხაროდ, მოხდა შეცდომა. გთხოვთ, სცადოთ თავიდან."
         return ChatResponse(
             user_id=request.user_id,
-            response="სამწუხაროდ, მოხდა შეცდომა. გთხოვთ, სცადოთ თავიდან.",
+            response=error_msg,
+            text=error_msg,
             success=False,
             error=str(e)
         )
@@ -195,7 +211,7 @@ async def database_status():
     return {
         "connected": is_connected,
         "ping": ping_ok,
-        "message": "MongoDB connected" if ping_ok else "MongoDB not available (using mock data)"
+        "message": "MongoDB connected" if ping_ok else "Using mock data"
     }
 
 
@@ -205,10 +221,11 @@ if __name__ == "__main__":
     import uvicorn
     
     settings = get_settings()
+    port = int(os.getenv("PORT", settings.port))
     
     uvicorn.run(
         "main:app",
-        host=settings.host,
-        port=settings.port,
+        host="0.0.0.0",
+        port=port,
         reload=settings.debug
     )
