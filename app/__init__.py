@@ -1,22 +1,22 @@
 """
 App module initialization.
-Exports tools, hooks, and agent service.
+Exports agent and product service.
 """
 
-from app.tools import scoop_server, search_products, get_product_details, check_availability
-from app.hooks import security_guardrail, BLOCKED_KEYWORDS
-from app.agent import ScoopAgent, get_agent
+from app.agent import ScoopAgent, get_agent, shutdown_agent, set_product_service
+from app.database import db_manager, get_db
+from app.product_service import ProductService, get_product_service
 
 __all__ = [
-    # Tools
-    "scoop_server",
-    "search_products",
-    "get_product_details",
-    "check_availability",
-    # Hooks
-    "security_guardrail",
-    "BLOCKED_KEYWORDS",
     # Agent
     "ScoopAgent",
     "get_agent",
+    "shutdown_agent",
+    "set_product_service",
+    # Database
+    "db_manager",
+    "get_db",
+    # Products
+    "ProductService",
+    "get_product_service",
 ]
