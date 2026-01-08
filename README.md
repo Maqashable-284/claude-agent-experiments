@@ -4,6 +4,7 @@
 
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
 [![Claude Agent SDK](https://img.shields.io/badge/Claude-Agent%20SDK-orange.svg)](https://docs.anthropic.com/en/docs/agents-and-tools)
+[![Cloud Run](https://img.shields.io/badge/Google-Cloud%20Run-blue.svg)](https://cloud.google.com/run)
 
 ## 🎯 რა არის?
 
@@ -16,6 +17,7 @@ Scoop AI არის აგენტური ჩატბოტი რომ�
 - 🧠 **Conversation Memory** - ახსოვს საუბრის ისტორია
 - 🛡️ **Security Hooks** - ბლოკავს საშიშ მოთხოვნებს
 - ⚡ **MCP Tools** - Claude თვითონ წყვეტს რა tool გამოიძახოს
+- 🚀 **Cloud Run** - Production-ready deployment
 
 ## 🏗️ არქიტექტურა
 
@@ -31,6 +33,7 @@ User → FastAPI → ScoopAgent → ClaudeSDKClient → Claude API
 scoop_ai_agent/
 ├── main.py              # FastAPI server
 ├── config.py            # Settings
+├── Dockerfile           # Cloud Run deployment
 ├── requirements.txt
 └── app/
     ├── agent.py         # ClaudeSDKClient wrapper
@@ -42,27 +45,21 @@ scoop_ai_agent/
 
 ## 🚀 გაშვება
 
-### 1. დააინსტალირე dependencies
+### ლოკალურად
 ```bash
 pip install -r requirements.txt
-```
-
-### 2. შექმენი .env ფაილი
-```bash
 cp .env.example .env
-# დაამატე შენი API keys
-```
-
-### 3. გაუშვი სერვერი
-```bash
+# დაამატე API keys
 python main.py
 ```
 
-### 4. ტესტი
+### Cloud Run Deploy
 ```bash
-curl -X POST http://localhost:8000/chat \
-  -H "Content-Type: application/json" \
-  -d '{"user_id": "test", "message": "მაჩვენე პროტეინები"}'
+gcloud run deploy scoop-ai-sdk \
+  --source . \
+  --region europe-west1 \
+  --allow-unauthenticated \
+  --set-env-vars "ANTHROPIC_API_KEY=...,MONGODB_URI=..."
 ```
 
 ## 🔧 Environment Variables
@@ -72,7 +69,7 @@ curl -X POST http://localhost:8000/chat \
 | `ANTHROPIC_API_KEY` | Anthropic API key |
 | `MONGODB_URI` | MongoDB connection string |
 | `MONGODB_DATABASE` | Database name |
-| `DEFAULT_MODEL` | Claude model (default: claude-haiku-3-5) |
+| `DEFAULT_MODEL` | Claude model (default: claude-3-5-haiku-20241022) |
 
 ## 📡 API Endpoints
 
@@ -81,15 +78,15 @@ curl -X POST http://localhost:8000/chat \
 | `/chat` | POST | მთავარი ჩატი |
 | `/health` | GET | Health check |
 | `/sessions` | GET | აქტიური სესიები |
-| `/session/clear` | POST | სესიის გასუფთავება |
 | `/db/status` | GET | MongoDB სტატუსი |
 
-## 🛡️ Security
+## 🤖 Botpress Integration
 
-- Blocked keywords (steroids, hack, etc.)
-- Prompt injection detection
-- Input length validation
-- Audit logging
+Botpress-თან დასაკავშირებლად გამოიყენე Cloud Run URL:
+```
+POST https://scoop-ai-sdk-xxxxx.run.app/chat
+Body: {"user_id": "botpress_user", "message": "..."}
+```
 
 ## 📄 License
 
