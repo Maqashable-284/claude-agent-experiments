@@ -31,29 +31,35 @@ logger = logging.getLogger("scoop_ai")
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Startup and shutdown events."""
-    settings = get_settings()
+    """Startup and shutdown events - optimized for Cloud Run."""
     logger.info("🚀 Starting Scoop AI Agent Server...")
     
-    # Connect to MongoDB
-    mongodb_uri = os.getenv("MONGODB_URI", settings.mongodb_uri)
-    mongodb_database = os.getenv("MONGODB_DATABASE", settings.mongodb_database)
+    # Don't block startup on MongoDB - connect lazily
+    # This allows Cloud Run health checks to pass quickly
+    import asyncio
     
-    try:
-        await db_manager.connect(mongodb_uri, mongodb_database)
-        
-        # Initialize product service and inject into tools
-        db = await db_manager.get_database()
-        product_service = get_product_service(db)
-        set_product_service(product_service)
-        
-        logger.info("✅ MongoDB connected and ProductService initialized")
-    except Exception as e:
-        logger.warning(f"⚠️ MongoDB connection failed: {e}")
-        logger.warning("⚠️ Running with mock data (no database)")
+    async def connect_mongodb_background():
+        """Connect to MongoDB in background."""
+        try:
+            settings = get_settings()
+            mongodb_uri = os.getenv("MONGODB_URI", settings.mongodb_uri)
+            mongodb_database = os.getenv("MONGODB_DATABASE", settings.mongodb_database)
+            
+            await db_manager.connect(mongodb_uri, mongodb_database)
+            
+            db = await db_manager.get_database()
+            product_service = get_product_service(db)
+            set_product_service(product_service)
+            
+            logger.info("✅ MongoDB connected and ProductService initialized")
+        except Exception as e:
+            logger.warning(f"⚠️ MongoDB connection failed: {e}")
+            logger.warning("⚠️ Running with mock data")
     
-    if not settings.anthropic_api_key:
-        logger.warning("⚠️ ANTHROPIC_API_KEY not set!")
+    # Start MongoDB connection in background (non-blocking)
+    asyncio.create_task(connect_mongodb_background())
+    
+    logger.info("✅ Server started (MongoDB connecting in background)")
     
     yield
     
