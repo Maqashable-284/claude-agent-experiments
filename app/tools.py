@@ -218,6 +218,5 @@ def create_scoop_mcp_server():
     """Creates the in-process MCP server instance."""
     return create_sdk_mcp_server(
         name="scoop-products",
-        version="3.0.0",
         tools=[search_products_tool, get_product_details_tool]
     )
