@@ -1,39 +1,42 @@
 # Scoop AI Agent SDK 🥤🤖
 
-**ქართული სპორტული კვების AI კონსულტანტი** - Standard Anthropic SDK + MongoDB
+**ქართული სპორტული კვების AI კონსულტანტი** - Claude Agent SDK V3
 
 [![Python 3.11](https://img.shields.io/badge/python-3.11-blue.svg)](https://www.python.org/downloads/)
-[![Anthropic SDK](https://img.shields.io/badge/Anthropic-SDK%20Standard-orange.svg)](https://docs.anthropic.com/)
+[![Claude Agent SDK](https://img.shields.io/badge/Claude-Agent%20SDK-purple.svg)](https://docs.anthropic.com/)
 [![Cloud Run](https://img.shields.io/badge/Google-Cloud%20Run-blue.svg)](https://cloud.google.com/run)
 
 ---
 
 ## 🎯 რა არის?
 
-Scoop AI Agent SDK არის **სტანდარტული Anthropic SDK**-ზე დაფუძნებული აგენტური ჩატბოტი სპორტული კვების პროდუქტებისთვის. მიგრირებულია Claude Agent SDK-დან Cloud Run თავსებადობისთვის.
+Scoop AI Agent V3 არის **Claude Agent SDK**-ზე დაფუძნებული აგენტური ჩატბოტი სპორტული კვების პროდუქტებისთვის.
+
+### ✨ V3 გაუმჯობესებები
+
+- 🤖 **Automatic Tool Orchestration** - Claude SDK თვითონ მართავს ყველაფერს
+- 🔄 **Built-in Conversation Memory** - არ გჭირდება manual history management
+- 🛡️ **Security via Hooks** - PreToolUse/PostToolUse ვალიდაცია
+- ⚡ **MCP Server** - In-process tool server architecture
+
+---
 
 ## ✨ ფუნქციონალი
 
 - 🔍 **პროდუქტების ძებნა** - MongoDB + Georgian→English translation
 - 💬 **ქართული ენა** - სრული Georgian support
-- 🧠 **Conversation Memory** - ახსოვს საუბრის ისტორია
-- 🛡️ **Security Guards** - Prompt injection & blocked keywords
-- ⚡ **Tool Use** - Claude თვითონ წყვეტს რა tool გამოიძახოს
+- 🧠 **Conversation Memory** - SDK მართავს საუბრის ისტორიას
+- 🛡️ **Security Hooks** - Prompt injection & blocked keywords
+- ⚡ **Auto Tool Use** - Claude აირჩევს tool-ს ავტომატურად
 - 🚀 **Cloud Run** - Production deployment europe-west1
 
 ---
 
-## ⚠️ მნიშვნელოვანი: MongoDB Databases
+## ⚠️ მნიშვნელოვანი: MongoDB Database
 
 ```
 ⚡ PRODUCTION DATABASE: scoop_db ← გამოიყენე ეს!
-❌ არ გამოიყენო: scoop_ai (მხოლოდ conversations)
 ```
-
-| Database | Collections | Products | გამოყენება |
-|----------|-------------|----------|------------|
-| `scoop_db` | 9 | ✅ 315 | **Production** |
-| `scoop_ai` | 1 | ❌ 0 | არ გამოიყენო |
 
 ---
 
@@ -44,8 +47,10 @@ User Request
     ↓
 FastAPI (/chat)
     ↓
-ScoopAgent (Anthropic SDK)
-    ↓ tool_use
+ScoopAgent (Claude Agent SDK)
+    ↓
+ClaudeSDKClient + MCP Server
+    ↓ automatic tool orchestration
 Execute Tools (search_products, get_product_details)
     ↓
 MongoDB (scoop_db.products)
@@ -53,37 +58,46 @@ MongoDB (scoop_db.products)
 Return Response to User
 ```
 
-**Agentic Loop:** Claude აანალიზებს მოთხოვნას → თვითონ წყვეტს tool-ის გამოძახებას → ასრულებს tools-ს → აბრუნებს საბოლოო პასუხს.
+**V3 Agentic Loop:** Claude SDK ავტომატურად მართავს tool calls → hooks ვალიდაციისთვის → საბოლოო პასუხი.
 
 ---
 
 ## 📁 პროექტის სტრუქტურა
 
 ```
-scoop_ai_agent/
+claude-agent-experiments/
 ├── main.py              # FastAPI server + lifespan
 ├── config.py            # Settings + System Prompt
-├── Dockerfile           # Cloud Run (Python 3.11)
-├── requirements.txt     # anthropic, fastapi, motor
+├── Dockerfile           # Cloud Run (Python 3.11 + Node.js)
+├── requirements.txt     # claude-agent-sdk, mcp, fastapi
 └── app/
     ├── __init__.py
-    ├── agent.py         # ScoopAgent + Tool Definitions + Security
+    ├── agent.py         # ScoopAgent + ClaudeSDKClient
+    ├── tools.py         # MCP Tools (@tool decorator)
+    ├── hooks.py         # Security hooks
     ├── database.py      # MongoDB connection manager
-    └── product_service.py # Product queries + QUERY_MAP
+    └── product_service.py # Product queries
 ```
 
 ---
 
 ## 🚀 Deployment
 
-### Cloud Run Deploy
+### Cloud Run Requirements
+
+⚠️ **მნიშვნელოვანი:** Claude Agent SDK მოითხოვს:
+- **Memory: 2 GiB** (მინიმუმ!)
+- **Node.js 18+** (Dockerfile-ში)
+
+### Deploy Command
 
 ```bash
 gcloud run deploy scoop-ai-sdk \
   --source . \
   --region europe-west1 \
   --allow-unauthenticated \
-  --set-env-vars "ANTHROPIC_API_KEY=sk-ant-api03-...,MONGODB_URI=mongodb+srv://scoop_admin:W6AuJLLnYrPnq.3@scoop.xbbeory.mongodb.net/?appName=Scoop,MONGODB_DATABASE=scoop_db,DEFAULT_MODEL=claude-3-5-haiku-20241022"
+  --memory 2Gi \
+  --set-env-vars "ANTHROPIC_API_KEY=...,MONGODB_URI=...,MONGODB_DATABASE=scoop_db"
 ```
 
 ### Service URL
@@ -93,13 +107,45 @@ https://scoop-ai-sdk-358331686110.europe-west1.run.app
 
 ---
 
+## 📦 Dependencies
+
+```txt
+# Core SDK
+claude-agent-sdk>=0.1.0
+mcp>=1.0.0                  # Required for Server version compatibility
+anthropic>=0.18.1
+
+# Web Framework
+fastapi==0.109.0
+uvicorn[standard]==0.27.0
+
+# MongoDB
+pymongo==4.6.1
+motor==3.3.2
+
+# Utilities
+pydantic>=2.11.0            # mcp 1.x requires >=2.11.0
+python-dotenv==1.0.1
+aiohttp==3.9.3
+```
+
+### ⚠️ Version Compatibility Notes
+
+| Package | Requirement | Reason |
+|---------|-------------|--------|
+| `mcp` | `>=1.0.0` | `Server.__init__()` version param support |
+| `pydantic` | `>=2.11.0` | Required by mcp 1.x |
+| Memory | `2 GiB` | Claude Code CLI subprocess |
+
+---
+
 ## 🔧 Environment Variables
 
 | Variable | Value | Description |
 |----------|-------|-------------|
 | `ANTHROPIC_API_KEY` | `sk-ant-api03-...` | Anthropic API key |
 | `MONGODB_URI` | `mongodb+srv://...` | MongoDB Atlas connection |
-| `MONGODB_DATABASE` | `scoop_db` | ⚠️ **არა scoop_ai!** |
+| `MONGODB_DATABASE` | `scoop_db` | Production database |
 | `DEFAULT_MODEL` | `claude-3-5-haiku-20241022` | Claude model |
 
 ---
@@ -108,11 +154,9 @@ https://scoop-ai-sdk-358331686110.europe-west1.run.app
 
 | Endpoint | Method | Description |
 |----------|--------|-------------|
-| `/` | GET | Service info |
+| `/` | GET | Service info (sdk: claude-agent-sdk) |
 | `/health` | GET | Health check + DB status |
 | `/chat` | POST | Chat with agent |
-| `/session/clear` | POST | Clear session history |
-| `/sessions` | GET | List active sessions |
 
 ### Chat Request
 ```bash
@@ -121,14 +165,18 @@ curl -X POST https://scoop-ai-sdk-xxx.run.app/chat \
   -d '{"user_id":"user123","message":"პროტეინი მაინტერესებს"}'
 ```
 
-### Response Format (Botpress Compatible)
+### Response Format (V7 Compatible)
 ```json
 {
+  "response_text_geo": "მოიძებნა 5 პროდუქტი...",
+  "current_state": "CHAT",
   "user_id": "user123",
   "response": "მოიძებნა 5 პროდუქტი...",
   "text": "მოიძებნა 5 პროდუქტი...",
   "success": true,
-  "choices": ["პროტეინი", "კრეატინი"]
+  "quick_replies": [
+    {"title": "რომელია საუკეთესო?", "payload": "რომელია საუკეთესო?"}
+  ]
 }
 ```
 
@@ -136,31 +184,30 @@ curl -X POST https://scoop-ai-sdk-xxx.run.app/chat \
 
 ## 🛡️ Security Features
 
+**Hooks-based Security:**
+- `validate_user_prompt` - Input validation before processing
+- `validate_tool_use` - Tool authorization check
+- `log_tool_result` - Result logging
+
 **Blocked Keywords:**
 - Illegal substances: steroid, anabolic, hgh, sarm
 - Prompt injection: "ignore instructions", "you are now"
-- Dangerous: overdose, suicide
-
-**Input Validation:**
-- Max message length: 5000 chars
-- Prompt injection pattern detection
 
 ---
 
-## 🔄 Migration Notes
+## 🐛 Resolved Issues
 
-**Claude Agent SDK → Standard Anthropic SDK**
+### 1. `Server.__init__() version error`
+**Problem:** `mcp 0.9.x` doesn't support `version` parameter
+**Solution:** Added `mcp>=1.0.0` to requirements.txt
 
-| Feature | Agent SDK | Standard SDK |
-|---------|-----------|--------------|
-| Tool calling | @tool decorator | tool_use API |
-| Hooks | PreToolUse/PostToolUse | Manual check |
-| MCP Server | create_sdk_mcp_server | Not used |
-| Node.js | Required (CLI) | Not required |
+### 2. `pydantic conflict`
+**Problem:** `mcp 1.x` requires `pydantic>=2.11.0`
+**Solution:** Updated pydantic constraint from `==2.6.1` to `>=2.11.0`
 
-**Why:**
-- Agent SDK had `Server.__init__()` bug on Cloud Run
-- Standard SDK is more stable and simpler
+### 3. `Memory limit exceeded`
+**Problem:** Claude Agent SDK uses ~525 MiB (exceeds 512 MiB limit)
+**Solution:** Increased Cloud Run memory to **2 GiB**
 
 ---
 
