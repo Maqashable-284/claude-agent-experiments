@@ -86,6 +86,7 @@ app.add_middleware(
 class ChatRequest(BaseModel):
     user_id: str = Field(..., min_length=1)
     message: str = Field(..., min_length=1, max_length=5000)
+    conversation_id: Optional[str] = None  # Botpress compatibility
 
 
 class ChatResponse(BaseModel):
