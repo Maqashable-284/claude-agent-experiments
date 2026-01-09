@@ -1,5 +1,6 @@
 # Core dependencies with pinned versions
 claude-agent-sdk>=0.1.0
+mcp>=1.0.0  # Required for Server version param compatibility
 anthropic>=0.18.1
 
 # Web Framework
