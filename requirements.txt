@@ -13,5 +13,5 @@ motor==3.3.2
 
 # Utilities
 python-dotenv==1.0.1
-pydantic==2.6.1
+pydantic>=2.11.0  # mcp 1.x requires >=2.11.0
 aiohttp==3.9.3
