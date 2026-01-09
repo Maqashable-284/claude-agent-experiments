@@ -1,6 +1,6 @@
 # Scoop AI Agent SDK 🥤🤖
 
-**ქართული სპორტული კვების AI კონსულტანტი** - Claude Agent SDK V3
+**ქართული სპორტული კვების AI კონსულტანტი** - Claude Agent SDK V3.1
 
 [![Python 3.11](https://img.shields.io/badge/python-3.11-blue.svg)](https://www.python.org/downloads/)
 [![Claude Agent SDK](https://img.shields.io/badge/Claude-Agent%20SDK-purple.svg)](https://docs.anthropic.com/)
@@ -10,14 +10,17 @@
 
 ## 🎯 რა არის?
 
-Scoop AI Agent V3 არის **Claude Agent SDK**-ზე დაფუძნებული აგენტური ჩატბოტი სპორტული კვების პროდუქტებისთვის.
+Scoop AI Agent V3.1 არის **Claude Agent SDK**-ზე დაფუძნებული აგენტური ჩატბოტი სპორტული კვების პროდუქტებისთვის.
 
-### ✨ V3 გაუმჯობესებები
+### ✨ V3.1 გაუმჯობესებები
 
 - 🤖 **Automatic Tool Orchestration** - Claude SDK თვითონ მართავს ყველაფერს
 - 🔄 **Built-in Conversation Memory** - არ გჭირდება manual history management
 - 🛡️ **Security via Hooks** - PreToolUse/PostToolUse ვალიდაცია
 - ⚡ **MCP Server** - In-process tool server architecture
+- 🚦 **Rate Limiting** - 30 request/minute (configurable)
+- ⏰ **Session TTL** - 30 წუთის შემდეგ auto-cleanup
+- 🎯 **Topic Guardrails** - Off-topic კითხვების ფილტრაცია
 
 ---
 
@@ -29,6 +32,23 @@ Scoop AI Agent V3 არის **Claude Agent SDK**-ზე დაფუძნე
 - 🛡️ **Security Hooks** - Prompt injection & blocked keywords
 - ⚡ **Auto Tool Use** - Claude აირჩევს tool-ს ავტომატურად
 - 🚀 **Cloud Run** - Production deployment europe-west1
+- 🎯 **Topic Focus** - მხოლოდ სპორტული კვება, off-topic უარყოფა
+
+---
+
+## 🛡️ Topic Guardrails
+
+ბოტი **მხოლოდ სპორტული კვების** თემაზე პასუხობს:
+
+| ნებადართული ✅ | აკრძალული ❌ |
+|---------------|-------------|
+| პროტეინი, კრეატინი, BCAA | ისტორია (ჟანა დარკი...) |
+| ფასების შედარება | პოლიტიკა |
+| დოზირება, მიღების წესები | ფილმები, მუსიკა |
+| სპორტული დანამატები | ზოგადი ცოდნა |
+
+**Off-topic კითხვაზე პასუხი:**
+> "ბოდიში, მე მხოლოდ სპორტული კვების საკითხებზე ვარ სპეციალიზებული..."
 
 ---
 
@@ -45,6 +65,8 @@ Scoop AI Agent V3 არის **Claude Agent SDK**-ზე დაფუძნე
 ```
 User Request
     ↓
+Rate Limiter (30 req/min)
+    ↓
 FastAPI (/chat)
     ↓
 ScoopAgent (Claude Agent SDK)
@@ -58,24 +80,22 @@ MongoDB (scoop_db.products)
 Return Response to User
 ```
 
-**V3 Agentic Loop:** Claude SDK ავტომატურად მართავს tool calls → hooks ვალიდაციისთვის → საბოლოო პასუხი.
-
 ---
 
 ## 📁 პროექტის სტრუქტურა
 
 ```
 claude-agent-experiments/
-├── main.py              # FastAPI server + lifespan
-├── config.py            # Settings + System Prompt
+├── main.py              # FastAPI server + Rate Limiting + Lifespan
+├── config.py            # Settings + System Prompt + Guardrails
 ├── Dockerfile           # Cloud Run (Python 3.11 + Node.js)
 ├── requirements.txt     # claude-agent-sdk, mcp, fastapi
 └── app/
-    ├── __init__.py
-    ├── agent.py         # ScoopAgent + ClaudeSDKClient
+    ├── __init__.py      # Exports + Custom Exceptions
+    ├── agent.py         # ScoopAgent + Session TTL
     ├── tools.py         # MCP Tools (@tool decorator)
     ├── hooks.py         # Security hooks
-    ├── database.py      # MongoDB connection manager
+    ├── database.py      # MongoDB + DatabaseConnectionError
     └── product_service.py # Product queries
 ```
 
@@ -129,14 +149,6 @@ python-dotenv==1.0.1
 aiohttp==3.9.3
 ```
 
-### ⚠️ Version Compatibility Notes
-
-| Package | Requirement | Reason |
-|---------|-------------|--------|
-| `mcp` | `>=1.0.0` | `Server.__init__()` version param support |
-| `pydantic` | `>=2.11.0` | Required by mcp 1.x |
-| Memory | `2 GiB` | Claude Code CLI subprocess |
-
 ---
 
 ## 🔧 Environment Variables
@@ -146,7 +158,10 @@ aiohttp==3.9.3
 | `ANTHROPIC_API_KEY` | `sk-ant-api03-...` | Anthropic API key |
 | `MONGODB_URI` | `mongodb+srv://...` | MongoDB Atlas connection |
 | `MONGODB_DATABASE` | `scoop_db` | Production database |
-| `DEFAULT_MODEL` | `claude-3-5-haiku-20241022` | Claude model |
+| `DEFAULT_MODEL` | `claude-sonnet-4-20250514` | Claude model |
+| `SESSION_TTL_SECONDS` | `1800` | Session timeout (30 min) |
+| `RATE_LIMIT_PER_MINUTE` | `30` | Rate limit per user |
+| `ALLOWED_ORIGINS` | `*` | CORS origins |
 
 ---
 
@@ -171,12 +186,16 @@ curl -X POST https://scoop-ai-sdk-xxx.run.app/chat \
   "response_text_geo": "მოიძებნა 5 პროდუქტი...",
   "current_state": "CHAT",
   "user_id": "user123",
-  "response": "მოიძებნა 5 პროდუქტი...",
-  "text": "მოიძებნა 5 პროდუქტი...",
-  "success": true,
-  "quick_replies": [
-    {"title": "რომელია საუკეთესო?", "payload": "რომელია საუკეთესო?"}
-  ]
+  "success": true
+}
+```
+
+### Rate Limit Response (HTTP 429)
+```json
+{
+  "response_text_geo": "ძალიან ბევრი მოთხოვნა. გთხოვთ მოიცადოთ ერთი წუთი.",
+  "success": false,
+  "error": "Rate limit exceeded"
 }
 ```
 
@@ -184,14 +203,19 @@ curl -X POST https://scoop-ai-sdk-xxx.run.app/chat \
 
 ## 🛡️ Security Features
 
-**Hooks-based Security:**
+### Hooks-based Security
 - `validate_user_prompt` - Input validation before processing
 - `validate_tool_use` - Tool authorization check
 - `log_tool_result` - Result logging
 
-**Blocked Keywords:**
+### Blocked Keywords
 - Illegal substances: steroid, anabolic, hgh, sarm
 - Prompt injection: "ignore instructions", "you are now"
+
+### Custom Exceptions
+- `AgentError` - General agent failures
+- `SessionError` - Session management issues
+- `DatabaseConnectionError` - MongoDB connection failures
 
 ---
 
@@ -209,8 +233,21 @@ curl -X POST https://scoop-ai-sdk-xxx.run.app/chat \
 **Problem:** Claude Agent SDK uses ~525 MiB (exceeds 512 MiB limit)
 **Solution:** Increased Cloud Run memory to **2 GiB**
 
+### 4. `Off-topic responses (Joan of Arc bug)`
+**Problem:** Bot was answering questions about history, politics, movies
+**Solution:** Added strict topic guardrails to system prompt - now refuses off-topic and redirects to sports nutrition
+
+### 5. `No rate limiting`
+**Problem:** Users could spam unlimited requests
+**Solution:** Added `RateLimiter` class with 30 req/min default
+
+### 6. `Session memory leak`
+**Problem:** Sessions stayed in memory forever
+**Solution:** Added session TTL with 30-minute auto-cleanup
+
 ---
 
 ## 📄 License
 
 MIT
+
