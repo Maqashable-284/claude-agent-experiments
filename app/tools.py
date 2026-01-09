@@ -146,13 +146,18 @@ async def search_products_tool(args: Dict[str, Any]) -> Dict[str, Any]:
             price = p.get("price", 0)
             brand = p.get("brand", "")
             servings = p.get("servings", "")
+            product_url = p.get("product_url") or p.get("url") or p.get("link", "")
+            
             text += f"{i}. **{name}**\n"
             text += f"   💰 ფასი: {price} ₾"
             if brand:
                 text += f" | 🏷️ {brand}"
             if servings:
                 text += f" | 📦 {servings} პორცია"
-            text += f"\n\n"
+            text += "\n"
+            if product_url:
+                text += f"   🔗 [პროდუქტის ნახვა]({product_url})\n"
+            text += "\n"
 
         return {"content": [{"type": "text", "text": text}]}
     else:
@@ -197,6 +202,8 @@ async def get_product_details_tool(args: Dict[str, Any]) -> Dict[str, Any]:
 
     if product:
         name = product.get("name_ka") or product.get("name", "Unknown")
+        product_url = product.get("product_url") or product.get("url") or product.get("link", "")
+        
         text = f"""## {name}
 
 **ბრენდი:** {product.get('brand', 'N/A')}
@@ -206,6 +213,9 @@ async def get_product_details_tool(args: Dict[str, Any]) -> Dict[str, Any]:
 **მარაგი:** {'✅ მარაგშია' if product.get('in_stock') else '❌ ამოიწურა'}
 
 {product.get('description', '')}"""
+
+        if product_url:
+            text += f"\n\n🔗 **[შეიძინეთ ოფიციალურ საიტზე]({product_url})**"
 
         return {"content": [{"type": "text", "text": text}]}
     else:
