@@ -7,18 +7,21 @@ Optimized for Cloud Run + Botpress Integration.
 
 import logging
 import os
+import time
 from contextlib import asynccontextmanager
-from typing import Optional, List
+from typing import Optional, List, Dict
+from collections import defaultdict
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
 from config import get_settings
-from app.agent import get_agent, shutdown_agent
-from app.database import db_manager
+from app.agent import get_agent, shutdown_agent, AgentError, SessionError
+from app.database import db_manager, DatabaseConnectionError
 from app.product_service import get_product_service
-from app.tools import set_tool_service  # NEW: Inject service into tools
+from app.tools import set_tool_service
 
 # Configure logging
 logging.basicConfig(
@@ -28,6 +31,50 @@ logging.basicConfig(
 logger = logging.getLogger("scoop_ai")
 
 
+# ==================== Rate Limiting ====================
+
+class RateLimiter:
+    """Simple in-memory rate limiter."""
+
+    def __init__(self, requests_per_minute: int = 30):
+        self.requests_per_minute = requests_per_minute
+        self.requests: Dict[str, List[float]] = defaultdict(list)
+
+    def is_allowed(self, client_id: str) -> bool:
+        """Check if request is allowed for this client."""
+        now = time.time()
+        minute_ago = now - 60
+
+        # Clean old requests
+        self.requests[client_id] = [
+            req_time for req_time in self.requests[client_id]
+            if req_time > minute_ago
+        ]
+
+        # Check limit
+        if len(self.requests[client_id]) >= self.requests_per_minute:
+            return False
+
+        self.requests[client_id].append(now)
+        return True
+
+    def cleanup(self):
+        """Remove stale entries."""
+        now = time.time()
+        minute_ago = now - 60
+        stale_clients = [
+            client_id for client_id, times in self.requests.items()
+            if all(t <= minute_ago for t in times)
+        ]
+        for client_id in stale_clients:
+            del self.requests[client_id]
+
+
+rate_limiter = RateLimiter(
+    requests_per_minute=int(os.getenv("RATE_LIMIT_PER_MINUTE", "30"))
+)
+
+
 # ==================== Lifespan Handler ====================
 
 @asynccontextmanager
@@ -35,33 +82,52 @@ async def lifespan(app: FastAPI):
     """Startup and shutdown - optimized for Cloud Run."""
     logger.info("Starting Scoop AI Agent V3 (Claude Agent SDK)...")
 
-    # Connect MongoDB in background (non-blocking)
+    # Connect MongoDB synchronously to avoid race conditions
+    try:
+        settings = get_settings()
+        mongodb_uri = os.getenv("MONGODB_URI", settings.mongodb_uri)
+        mongodb_database = os.getenv("MONGODB_DATABASE", settings.mongodb_database)
+
+        await db_manager.connect(mongodb_uri, mongodb_database)
+
+        db = await db_manager.get_database()
+        product_service = get_product_service(db)
+
+        # Inject service into Tools
+        set_tool_service(product_service)
+
+        logger.info("MongoDB connected & Tools configured")
+    except DatabaseConnectionError as e:
+        logger.warning(f"MongoDB connection failed: {e} - using mock data")
+    except Exception as e:
+        logger.warning(f"Unexpected error during startup: {e} - using mock data")
+
+    # Start session cleanup task
     import asyncio
 
-    async def connect_mongodb():
-        try:
-            settings = get_settings()
-            mongodb_uri = os.getenv("MONGODB_URI", settings.mongodb_uri)
-            mongodb_database = os.getenv("MONGODB_DATABASE", settings.mongodb_database)
+    async def cleanup_sessions():
+        """Periodic cleanup of stale sessions and rate limiter."""
+        while True:
+            await asyncio.sleep(300)  # Every 5 minutes
+            try:
+                agent = get_agent()
+                await agent.cleanup_stale_sessions()
+                rate_limiter.cleanup()
+                logger.debug("Session and rate limiter cleanup completed")
+            except Exception as e:
+                logger.warning(f"Cleanup task error: {e}")
 
-            await db_manager.connect(mongodb_uri, mongodb_database)
-
-            db = await db_manager.get_database()
-            product_service = get_product_service(db)
-
-            # Inject service into Tools (NEW for V3)
-            set_tool_service(product_service)
-
-            logger.info("MongoDB connected & Tools configured")
-        except Exception as e:
-            logger.warning(f"MongoDB failed: {e} - using mock data")
-
-    asyncio.create_task(connect_mongodb())
+    cleanup_task = asyncio.create_task(cleanup_sessions())
     logger.info("Server started (SDK mode)")
 
     yield
 
     logger.info("Shutting down...")
+    cleanup_task.cancel()
+    try:
+        await cleanup_task
+    except asyncio.CancelledError:
+        pass
     await shutdown_agent()
     await db_manager.disconnect()
 
@@ -71,17 +137,54 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="Scoop AI Agent V3",
     description="სპორტული კვების კონსულტანტი - Claude Agent SDK",
-    version="3.0.0",
+    version="3.1.0",
     lifespan=lifespan
 )
 
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+# CORS Configuration - restrict in production
+ALLOWED_ORIGINS = os.getenv("ALLOWED_ORIGINS", "*").split(",")
+if ALLOWED_ORIGINS == ["*"]:
+    # Development mode - allow all
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=["*"],
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
+else:
+    # Production mode - restricted origins
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=ALLOWED_ORIGINS,
+        allow_credentials=True,
+        allow_methods=["GET", "POST", "OPTIONS"],
+        allow_headers=["Content-Type", "Authorization"],
+    )
+
+
+# ==================== Rate Limiting Middleware ====================
+
+@app.middleware("http")
+async def rate_limit_middleware(request: Request, call_next):
+    """Apply rate limiting to /chat endpoint."""
+    if request.url.path == "/chat":
+        # Get client identifier (user_id from body or IP)
+        client_ip = request.client.host if request.client else "unknown"
+
+        if not rate_limiter.is_allowed(client_ip):
+            logger.warning(f"Rate limit exceeded for {client_ip}")
+            return JSONResponse(
+                status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                content={
+                    "response_text_geo": "ძალიან ბევრი მოთხოვნა. გთხოვთ მოიცადოთ ერთი წუთი.",
+                    "current_state": "CHAT",
+                    "success": False,
+                    "error": "Rate limit exceeded"
+                }
+            )
+
+    return await call_next(request)
 
 
 # ==================== Models ====================
@@ -153,18 +256,62 @@ async def chat(request: ChatRequest):
             "text": response_text,
             "success": True
         }
+
+    except SessionError as e:
+        logger.warning(f"Session error for {request.user_id}: {e}")
+        error_msg = "სესია ვერ მოიძებნა. გთხოვთ დაიწყოთ თავიდან."
+        return JSONResponse(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            content={
+                "response_text_geo": error_msg,
+                "current_state": "CHAT",
+                "user_id": request.user_id,
+                "success": False,
+                "error": "session_error"
+            }
+        )
+
+    except AgentError as e:
+        logger.error(f"Agent error for {request.user_id}: {e}")
+        error_msg = "აგენტის შეცდომა. გთხოვთ სცადოთ თავიდან."
+        return JSONResponse(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            content={
+                "response_text_geo": error_msg,
+                "current_state": "CHAT",
+                "user_id": request.user_id,
+                "success": False,
+                "error": "agent_error"
+            }
+        )
+
+    except TimeoutError:
+        logger.error(f"Timeout for {request.user_id}")
+        error_msg = "მოთხოვნას ძალიან დიდი დრო დასჭირდა. გთხოვთ სცადოთ თავიდან."
+        return JSONResponse(
+            status_code=status.HTTP_504_GATEWAY_TIMEOUT,
+            content={
+                "response_text_geo": error_msg,
+                "current_state": "CHAT",
+                "user_id": request.user_id,
+                "success": False,
+                "error": "timeout"
+            }
+        )
+
     except Exception as e:
-        logger.error(f"Error: {e}")
-        error_msg = "სამწუხაროდ, მოხდა შეცდომა."
-        return {
-            "response_text_geo": error_msg,
-            "current_state": "CHAT",
-            "user_id": request.user_id,
-            "response": error_msg,
-            "text": error_msg,
-            "success": False,
-            "error": str(e)
-        }
+        logger.exception(f"Unexpected error for {request.user_id}: {e}")
+        error_msg = "სამწუხაროდ, მოხდა შეცდომა. გთხოვთ სცადოთ თავიდან."
+        return JSONResponse(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            content={
+                "response_text_geo": error_msg,
+                "current_state": "CHAT",
+                "user_id": request.user_id,
+                "success": False,
+                "error": "internal_error"
+            }
+        )
 
 
 @app.post("/session/clear")

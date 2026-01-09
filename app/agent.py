@@ -6,8 +6,10 @@ Replaces the manual agentic loop with SDK-managed sessions.
 """
 
 import os
+import time
 import logging
-from typing import Dict, Optional
+from typing import Dict, Optional, NamedTuple
+from dataclasses import dataclass
 
 from claude_agent_sdk import (
     ClaudeSDKClient,
@@ -23,6 +25,36 @@ from app.hooks import validate_user_prompt, validate_tool_use, log_tool_result
 logger = logging.getLogger("scoop_ai.agent")
 
 
+# ==================== Custom Exceptions ====================
+
+class AgentError(Exception):
+    """Base exception for agent errors."""
+    pass
+
+
+class SessionError(AgentError):
+    """Session-related errors."""
+    pass
+
+
+class ToolExecutionError(AgentError):
+    """Tool execution errors."""
+    pass
+
+
+# ==================== Session Data ====================
+
+@dataclass
+class SessionData:
+    """Holds client and metadata for a session."""
+    client: ClaudeSDKClient
+    created_at: float
+    last_activity: float
+
+    def update_activity(self):
+        self.last_activity = time.time()
+
+
 class ScoopAgent:
     """
     Scoop AI Agent V3 using Claude Agent SDK.
@@ -32,13 +64,17 @@ class ScoopAgent:
     - Built-in conversation history management
     - Security via hooks (not inline checks)
     - In-process MCP server for tools
+    - Session TTL with automatic cleanup
     """
+
+    # Session timeout in seconds (30 minutes)
+    SESSION_TTL = int(os.getenv("SESSION_TTL_SECONDS", "1800"))
 
     def __init__(self):
         self.settings = get_settings()
         self.mcp_server = create_scoop_mcp_server()
-        self._clients: Dict[str, ClaudeSDKClient] = {}
-        logger.info("ScoopAgent V3 initialized with Claude Agent SDK")
+        self._sessions: Dict[str, SessionData] = {}
+        logger.info(f"ScoopAgent V3 initialized (TTL: {self.SESSION_TTL}s)")
 
     def _create_options(self) -> ClaudeAgentOptions:
         """Configure agent options for SDK client."""
@@ -77,14 +113,36 @@ class ScoopAgent:
 
     async def _get_or_create_client(self, user_id: str) -> ClaudeSDKClient:
         """Get existing client for user or create a new one."""
-        if user_id not in self._clients:
-            logger.info(f"Creating new agent session for user: {user_id}")
+        now = time.time()
+
+        # Check if session exists and is not expired
+        if user_id in self._sessions:
+            session = self._sessions[user_id]
+            if (now - session.last_activity) > self.SESSION_TTL:
+                # Session expired, clean it up
+                logger.info(f"Session expired for user: {user_id}")
+                await self.clear_session(user_id)
+            else:
+                session.update_activity()
+                return session.client
+
+        # Create new session
+        logger.info(f"Creating new agent session for user: {user_id}")
+        try:
             options = self._create_options()
             client = ClaudeSDKClient(options=options)
             await client.connect()
-            self._clients[user_id] = client
 
-        return self._clients[user_id]
+            self._sessions[user_id] = SessionData(
+                client=client,
+                created_at=now,
+                last_activity=now
+            )
+            return client
+
+        except Exception as e:
+            logger.error(f"Failed to create session for {user_id}: {e}")
+            raise SessionError(f"Failed to create session: {e}") from e
 
     async def chat(self, user_id: str, message: str) -> str:
         """
@@ -101,10 +159,14 @@ class ScoopAgent:
 
         Returns:
             Agent's response text
-        """
-        try:
-            client = await self._get_or_create_client(user_id)
 
+        Raises:
+            SessionError: If session creation fails
+            AgentError: If chat processing fails
+        """
+        client = await self._get_or_create_client(user_id)
+
+        try:
             # Send message to agent
             # SDK handles tool loops automatically
             await client.query(message)
@@ -121,7 +183,15 @@ class ScoopAgent:
             if not full_response:
                 full_response = "ბოდიში, პასუხის გენერირება ვერ მოხერხდა. გთხოვთ სცადოთ თავიდან."
 
+            # Update session activity
+            if user_id in self._sessions:
+                self._sessions[user_id].update_activity()
+
             return full_response
+
+        except SessionError:
+            # Re-raise session errors
+            raise
 
         except Exception as e:
             logger.error(f"Agent error for user {user_id}: {e}")
@@ -129,8 +199,8 @@ class ScoopAgent:
             # Clear broken session
             await self.clear_session(user_id)
 
-            # Return friendly error message
-            return "სამწუხაროდ, ტექნიკური შეფერხებაა. გთხოვთ სცადოთ თავიდან."
+            # Raise proper exception for handler
+            raise AgentError(f"Chat processing failed: {e}") from e
 
     async def clear_session(self, user_id: str) -> bool:
         """
@@ -138,25 +208,60 @@ class ScoopAgent:
 
         Disconnects and removes the client, forcing a fresh session on next chat.
         """
-        if user_id in self._clients:
+        if user_id in self._sessions:
             try:
-                await self._clients[user_id].disconnect()
+                await self._sessions[user_id].client.disconnect()
             except Exception as e:
                 logger.warning(f"Error disconnecting client for {user_id}: {e}")
             finally:
-                del self._clients[user_id]
+                del self._sessions[user_id]
             logger.info(f"Session cleared for user: {user_id}")
             return True
         return False
 
+    async def cleanup_stale_sessions(self) -> int:
+        """
+        Remove sessions that have exceeded TTL.
+
+        Returns:
+            Number of sessions cleaned up.
+        """
+        now = time.time()
+        stale_users = [
+            user_id for user_id, session in self._sessions.items()
+            if (now - session.last_activity) > self.SESSION_TTL
+        ]
+
+        for user_id in stale_users:
+            await self.clear_session(user_id)
+
+        if stale_users:
+            logger.info(f"Cleaned up {len(stale_users)} stale sessions")
+
+        return len(stale_users)
+
     def get_active_sessions(self) -> list:
-        """Get list of active user session IDs."""
-        return list(self._clients.keys())
+        """Get list of active user session IDs with metadata."""
+        now = time.time()
+        return [
+            {
+                "user_id": user_id,
+                "created_at": session.created_at,
+                "last_activity": session.last_activity,
+                "age_seconds": int(now - session.created_at),
+                "idle_seconds": int(now - session.last_activity),
+            }
+            for user_id, session in self._sessions.items()
+        ]
+
+    def get_session_count(self) -> int:
+        """Get count of active sessions."""
+        return len(self._sessions)
 
     async def shutdown(self):
         """Shutdown all agent sessions gracefully."""
-        logger.info("Shutting down all agent sessions...")
-        for user_id in list(self._clients.keys()):
+        logger.info(f"Shutting down {len(self._sessions)} agent sessions...")
+        for user_id in list(self._sessions.keys()):
             await self.clear_session(user_id)
         logger.info("All sessions closed")
 

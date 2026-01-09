@@ -11,6 +11,13 @@ from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorDatabase
 logger = logging.getLogger(__name__)
 
 
+# ==================== Custom Exception ====================
+
+class DatabaseConnectionError(Exception):
+    """Raised when database connection fails."""
+    pass
+
+
 class DatabaseManager:
     """Manages MongoDB connections with lazy initialization."""
     
@@ -52,7 +59,7 @@ class DatabaseManager:
                 self._client.close()
                 self._client = None
                 self._database = None
-            raise
+            raise DatabaseConnectionError(f"Failed to connect to MongoDB: {e}") from e
     
     async def disconnect(self) -> None:
         """Close database connection."""
