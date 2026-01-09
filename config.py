@@ -20,11 +20,11 @@ class Settings(BaseModel):
     
     # MongoDB
     mongodb_uri: str = os.getenv("MONGODB_URI", "mongodb://localhost:27017")
-    mongodb_database: str = os.getenv("MONGODB_DATABASE", "scoop_ai")
-    
+    mongodb_database: str = os.getenv("MONGODB_DATABASE", "scoop_db")  # Note: scoop_ai is deprecated
+
     # Server
     host: str = os.getenv("HOST", "0.0.0.0")
-    port: int = int(os.getenv("PORT", "8000"))
+    port: int = int(os.getenv("PORT", "8080"))  # Cloud Run default
     debug: bool = os.getenv("DEBUG", "false").lower() == "true"
     
     # Agent

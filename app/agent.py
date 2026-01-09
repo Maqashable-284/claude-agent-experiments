@@ -1,359 +1,167 @@
 """
-Scoop AI Agent Service - Standard Anthropic SDK.
+Scoop AI Agent V3 - Powered by Claude Agent SDK.
 
-Uses the standard Anthropic SDK with tool_use for product search.
-More reliable on Cloud Run than the Agent SDK.
+Uses ClaudeSDKClient for automatic tool orchestration and conversation management.
+Replaces the manual agentic loop with SDK-managed sessions.
 """
 
 import os
-import json
 import logging
-from typing import Dict, List, Optional, Any
+from typing import Dict, Optional
 
-from anthropic import AsyncAnthropic
+from claude_agent_sdk import (
+    ClaudeSDKClient,
+    ClaudeAgentOptions,
+    AssistantMessage,
+    TextBlock,
+)
 
 from config import get_settings
+from app.tools import create_scoop_mcp_server
+from app.hooks import validate_user_prompt, validate_tool_use, log_tool_result
 
 logger = logging.getLogger("scoop_ai.agent")
 
 
-# ==================== Tool Definitions ====================
-
-TOOLS = [
-    {
-        "name": "search_products",
-        "description": "პროდუქტების ძებნა მონაცემთა ბაზაში. გამოიყენეთ საძიებო სიტყვით.",
-        "input_schema": {
-            "type": "object",
-            "properties": {
-                "query": {
-                    "type": "string",
-                    "description": "საძიებო სიტყვა (პროდუქტის სახელი, ბრენდი, კატეგორია)"
-                },
-                "category": {
-                    "type": "string",
-                    "description": "კატეგორია (protein, creatine, bcaa, pre_workout)"
-                },
-                "max_price": {
-                    "type": "number",
-                    "description": "მაქსიმალური ფასი ლარებში"
-                }
-            },
-            "required": ["query"]
-        }
-    },
-    {
-        "name": "get_product_details",
-        "description": "კონკრეტული პროდუქტის დეტალური ინფორმაცია ID-ით.",
-        "input_schema": {
-            "type": "object",
-            "properties": {
-                "product_id": {
-                    "type": "string",
-                    "description": "პროდუქტის უნიკალური ID"
-                }
-            },
-            "required": ["product_id"]
-        }
-    }
-]
-
-
-# ==================== Mock Products (Fallback) ====================
-
-MOCK_PRODUCTS = [
-    {
-        "id": "prod_001",
-        "name": "Optimum Nutrition Gold Standard Whey",
-        "name_ka": "ოპტიმუმ ნიუტრიშენ გოლდ სტანდარტ ვეი",
-        "category": "protein",
-        "brand": "Optimum Nutrition",
-        "price": 189.00,
-        "in_stock": True,
-        "description": "პრემიუმ ვეი პროტეინი - 24გ პროტეინი პორციაზე"
-    },
-    {
-        "id": "prod_002",
-        "name": "MuscleTech Nitro-Tech",
-        "name_ka": "მასლთექ ნიტრო-თექ",
-        "category": "protein",
-        "brand": "MuscleTech",
-        "price": 159.00,
-        "in_stock": True,
-        "description": "სამეცნიერო ფორმულა - 30გ პროტეინი + კრეატინი"
-    },
-    {
-        "id": "prod_003",
-        "name": "Optimum Nutrition Creatine",
-        "name_ka": "ოპტიმუმ ნიუტრიშენ კრეატინი",
-        "category": "creatine",
-        "brand": "Optimum Nutrition",
-        "price": 79.00,
-        "in_stock": True,
-        "description": "სუფთა კრეატინ მონოჰიდრატი"
-    },
-    {
-        "id": "prod_004",
-        "name": "BSN NO-Xplode Pre-Workout",
-        "name_ka": "BSN ნო-ექსპლოუდ პრე-ვორქაუთი",
-        "category": "pre_workout",
-        "brand": "BSN",
-        "price": 129.00,
-        "in_stock": True,
-        "description": "ენერგია და ფოკუსი ვარჯიშის წინ"
-    }
-]
-
-
-# Global product service (set from main.py)
-_product_service = None
-
-
-def set_product_service(service):
-    global _product_service
-    _product_service = service
-
-
-# ==================== Tool Execution ====================
-
-async def execute_tool(name: str, input_data: Dict[str, Any]) -> str:
-    """Execute a tool and return the result as a string."""
-    
-    if name == "search_products":
-        return await search_products(input_data)
-    elif name == "get_product_details":
-        return await get_product_details(input_data)
-    else:
-        return f"Unknown tool: {name}"
-
-
-async def search_products(args: Dict) -> str:
-    """Search for products."""
-    query = args.get("query", "").lower()
-    category = args.get("category")
-    max_price = args.get("max_price")
-    
-    # Try MongoDB first, fallback to mock
-    if _product_service:
-        try:
-            results = await _product_service.search_products(
-                query=query,
-                category=category,
-                max_price=max_price,
-                limit=10
-            )
-        except Exception as e:
-            logger.error(f"MongoDB search error: {e}")
-            results = []
-    else:
-        # Use mock data
-        results = []
-        for p in MOCK_PRODUCTS:
-            if query in p.get("name", "").lower() or query in p.get("name_ka", "").lower() or query in p.get("category", "").lower():
-                if category and p.get("category") != category:
-                    continue
-                if max_price and p.get("price", 0) > max_price:
-                    continue
-                results.append(p)
-    
-    if results:
-        text = f"მოიძებნა {len(results)} პროდუქტი:\n\n"
-        for i, p in enumerate(results, 1):
-            name = p.get("name") or p.get("name_ka", "Unknown")
-            price = p.get("price", 0)
-            brand = p.get("brand", "")
-            servings = p.get("servings", "")
-            text += f"{i}. **{name}**\n"
-            text += f"   💰 ფასი: {price} ₾"
-            if brand:
-                text += f" | 🏷️ {brand}"
-            if servings:
-                text += f" | 📦 {servings} პორცია"
-            text += f"\n\n"
-        return text
-    else:
-        return f"სამწუხაროდ, '{query}' მოთხოვნით პროდუქტი ვერ მოიძებნა."
-
-
-async def get_product_details(args: Dict) -> str:
-    """Get product details by ID."""
-    product_id = args.get("product_id", "")
-    
-    # Try MongoDB first
-    product = None
-    if _product_service:
-        try:
-            product = await _product_service.get_product_by_id(product_id)
-        except:
-            pass
-    
-    # Fallback to mock
-    if not product:
-        for p in MOCK_PRODUCTS:
-            if p.get("id") == product_id:
-                product = p
-                break
-    
-    if product:
-        name = product.get("name_ka") or product.get("name", "Unknown")
-        return f"""## {name}
-**ბრენდი:** {product.get('brand', 'N/A')}
-**კატეგორია:** {product.get('category', 'N/A')}
-**ფასი:** {product.get('price', 0)} ₾
-**მარაგი:** {'✅ მარაგშია' if product.get('in_stock') else '❌ ამოიწურა'}
-
-{product.get('description', '')}"""
-    
-    return f"პროდუქტი ID '{product_id}' ვერ მოიძებნა."
-
-
-# ==================== Agent Class ====================
-
 class ScoopAgent:
     """
-    Scoop AI Agent using standard Anthropic SDK.
-    
-    Implements agentic loop with tool_use.
+    Scoop AI Agent V3 using Claude Agent SDK.
+
+    Key improvements over V2:
+    - Automatic tool orchestration (no manual agentic loop)
+    - Built-in conversation history management
+    - Security via hooks (not inline checks)
+    - In-process MCP server for tools
     """
-    
+
     def __init__(self):
         self.settings = get_settings()
-        self.client = AsyncAnthropic(
-            api_key=os.getenv("ANTHROPIC_API_KEY", self.settings.anthropic_api_key)
+        self.mcp_server = create_scoop_mcp_server()
+        self._clients: Dict[str, ClaudeSDKClient] = {}
+        logger.info("ScoopAgent V3 initialized with Claude Agent SDK")
+
+    def _create_options(self) -> ClaudeAgentOptions:
+        """Configure agent options for SDK client."""
+        return ClaudeAgentOptions(
+            # Model configuration
+            model=os.getenv("DEFAULT_MODEL", self.settings.default_model),
+            system_prompt=self.settings.system_prompt,
+
+            # Working directory
+            cwd=str(self.settings.cwd),
+
+            # Permission mode - accept edits since we only have read-only tools
+            permission_mode=self.settings.permission_mode,
+
+            # MCP Server registration
+            mcp_servers={
+                "scoop-products": self.mcp_server,
+            },
+
+            # Explicitly allow only our tools
+            allowed_tools=[
+                "mcp__scoop-products__search_products",
+                "mcp__scoop-products__get_product_details",
+            ],
+
+            # Security Hooks
+            hooks={
+                "UserPromptSubmit": [validate_user_prompt],
+                "PreToolUse": [validate_tool_use],
+                "PostToolUse": [log_tool_result],
+            },
+
+            # Limits
+            max_turns=self.settings.max_turns,
         )
-        self.model = os.getenv("DEFAULT_MODEL", self.settings.default_model)
-        self._sessions: Dict[str, List[Dict]] = {}  # user_id -> messages
-    
-    def _get_messages(self, user_id: str) -> List[Dict]:
-        """Get or create message history for user."""
-        if user_id not in self._sessions:
-            self._sessions[user_id] = []
-        return self._sessions[user_id]
-    
-    # ==================== Security Guardrails ====================
-    
-    # Blocked dangerous keywords
-    BLOCKED_KEYWORDS = {
-        # Illegal substances
-        "steroid", "სტეროიდ", "anabolic", "ანაბოლიკ",
-        "testosterone", "ტესტოსტერონ", "hgh", "sarm",
-        # Hacking/Abuse
-        "hack", "inject", "exploit", "bypass", "jailbreak",
-        "ignore previous", "ignore instructions", "disregard",
-        # Medical danger
-        "overdose", "suicide", "kill", "die",
-    }
-    
-    # Prompt injection patterns
-    INJECTION_PATTERNS = [
-        "ignore all previous",
-        "forget your instructions",
-        "you are now",
-        "act as if",
-        "pretend you are",
-        "system prompt",
-        "new instructions",
-    ]
-    
-    def _security_check(self, message: str) -> Optional[str]:
-        """
-        Check message for security violations.
-        Returns error message if blocked, None if safe.
-        """
-        message_lower = message.lower()
-        
-        # Check length
-        if len(message) > 5000:
-            return "შეტყობინება ძალიან გრძელია. გთხოვთ, შეამოკლოთ."
-        
-        # Check blocked keywords
-        for keyword in self.BLOCKED_KEYWORDS:
-            if keyword in message_lower:
-                return "სამწუხაროდ, ჩვენ მხოლოდ ლეგალურ სპორტულ დანამატებზე ვაძლევთ რჩევებს."
-        
-        # Check prompt injection
-        for pattern in self.INJECTION_PATTERNS:
-            if pattern in message_lower:
-                logger.warning(f"Prompt injection attempt: {pattern}")
-                return "რით შემიძლია დაგეხმაროთ სპორტულ კვებასთან დაკავშირებით?"
-        
-        return None  # Safe
-    
+
+    async def _get_or_create_client(self, user_id: str) -> ClaudeSDKClient:
+        """Get existing client for user or create a new one."""
+        if user_id not in self._clients:
+            logger.info(f"Creating new agent session for user: {user_id}")
+            options = self._create_options()
+            client = ClaudeSDKClient(options=options)
+            await client.connect()
+            self._clients[user_id] = client
+
+        return self._clients[user_id]
+
     async def chat(self, user_id: str, message: str) -> str:
         """
-        Process a chat message with agentic tool loop.
-        Includes security guardrails.
+        Process a chat message using Claude Agent SDK.
+
+        The SDK handles:
+        - Tool orchestration automatically
+        - Conversation history
+        - Security via hooks
+
+        Args:
+            user_id: Unique identifier for the user session
+            message: User's message in Georgian or English
+
+        Returns:
+            Agent's response text
         """
-        # ==================== Security Check ====================
-        security_result = self._security_check(message)
-        if security_result:
-            logger.warning(f"Security block for {user_id}: {security_result}")
-            return security_result
-        
-        messages = self._get_messages(user_id)
-        messages.append({"role": "user", "content": message})
-        
-        # Agentic loop
-        max_iterations = 5
-        
-        for _ in range(max_iterations):
-            response = await self.client.messages.create(
-                model=self.model,
-                max_tokens=2048,
-                system=self.settings.system_prompt,
-                tools=TOOLS,
-                messages=messages
-            )
-            
-            # Check if we need to execute tools
-            if response.stop_reason == "tool_use":
-                # Extract tool calls
-                assistant_content = response.content
-                messages.append({"role": "assistant", "content": assistant_content})
-                
-                # Execute each tool
-                tool_results = []
-                for block in assistant_content:
-                    if block.type == "tool_use":
-                        logger.info(f"Executing tool: {block.name}")
-                        result = await execute_tool(block.name, block.input)
-                        tool_results.append({
-                            "type": "tool_result",
-                            "tool_use_id": block.id,
-                            "content": result
-                        })
-                
-                messages.append({"role": "user", "content": tool_results})
-            else:
-                # No more tools, extract final text
-                final_text = ""
-                for block in response.content:
-                    if hasattr(block, "text"):
-                        final_text += block.text
-                
-                messages.append({"role": "assistant", "content": response.content})
-                
-                # Keep only last 20 messages to prevent context overflow
-                if len(messages) > 20:
-                    self._sessions[user_id] = messages[-20:]
-                
-                return final_text
-        
-        return "მოხდა შეცდომა. გთხოვთ, სცადოთ თავიდან."
-    
+        try:
+            client = await self._get_or_create_client(user_id)
+
+            # Send message to agent
+            # SDK handles tool loops automatically
+            await client.query(message)
+
+            # Collect response
+            full_response = ""
+
+            async for msg in client.receive_response():
+                if isinstance(msg, AssistantMessage):
+                    for block in msg.content:
+                        if isinstance(block, TextBlock):
+                            full_response += block.text
+
+            if not full_response:
+                full_response = "ბოდიში, პასუხის გენერირება ვერ მოხერხდა. გთხოვთ სცადოთ თავიდან."
+
+            return full_response
+
+        except Exception as e:
+            logger.error(f"Agent error for user {user_id}: {e}")
+
+            # Clear broken session
+            await self.clear_session(user_id)
+
+            # Return friendly error message
+            return "სამწუხაროდ, ტექნიკური შეფერხებაა. გთხოვთ სცადოთ თავიდან."
+
     async def clear_session(self, user_id: str) -> bool:
-        """Clear user's conversation history."""
-        if user_id in self._sessions:
-            del self._sessions[user_id]
+        """
+        Clear user's conversation session.
+
+        Disconnects and removes the client, forcing a fresh session on next chat.
+        """
+        if user_id in self._clients:
+            try:
+                await self._clients[user_id].disconnect()
+            except Exception as e:
+                logger.warning(f"Error disconnecting client for {user_id}: {e}")
+            finally:
+                del self._clients[user_id]
+            logger.info(f"Session cleared for user: {user_id}")
             return True
         return False
-    
-    def get_active_sessions(self) -> List[str]:
-        """Get list of active user sessions."""
-        return list(self._sessions.keys())
+
+    def get_active_sessions(self) -> list:
+        """Get list of active user session IDs."""
+        return list(self._clients.keys())
+
+    async def shutdown(self):
+        """Shutdown all agent sessions gracefully."""
+        logger.info("Shutting down all agent sessions...")
+        for user_id in list(self._clients.keys()):
+            await self.clear_session(user_id)
+        logger.info("All sessions closed")
 
 
-# ==================== Singleton ====================
+# ==================== Singleton Management ====================
 
 _agent_instance: Optional[ScoopAgent] = None
 
@@ -367,6 +175,9 @@ def get_agent() -> ScoopAgent:
 
 
 async def shutdown_agent():
-    """Shutdown the agent."""
+    """Shutdown the global agent instance."""
     global _agent_instance
-    _agent_instance = None
+    if _agent_instance is not None:
+        await _agent_instance.shutdown()
+        _agent_instance = None
+        logger.info("Agent shutdown complete")
