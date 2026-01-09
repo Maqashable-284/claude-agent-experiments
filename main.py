@@ -90,12 +90,16 @@ class ChatRequest(BaseModel):
 
 
 class ChatResponse(BaseModel):
-    user_id: str
-    response: str
+    # V7 compatibility
+    response_text_geo: str
+    current_state: str = "CHAT"
+    # Original SDK fields
+    user_id: str = ""
+    response: str = ""
     text: str = ""
     success: bool = True
     error: Optional[str] = None
-    choices: Optional[List[str]] = None
+    quick_replies: Optional[List[dict]] = None
 
 
 # ==================== Endpoints ====================
@@ -103,7 +107,7 @@ class ChatResponse(BaseModel):
 @app.get("/")
 async def root():
     return {
-        "name": "Scoop AI Agent",
+        "name": "Scoop AI Agent SDK",
         "version": "2.0.0",
         "sdk": "Anthropic SDK (standard)",
         "docs": "/docs"
@@ -118,7 +122,7 @@ async def health():
     }
 
 
-@app.post("/chat", response_model=ChatResponse)
+@app.post("/chat")
 async def chat(request: ChatRequest):
     try:
         agent = get_agent()
@@ -126,17 +130,25 @@ async def chat(request: ChatRequest):
         
         response_text = await agent.chat(request.user_id, request.message)
         
-        choices = None
-        if "მაგალითად:" in response_text:
-            choices = ["პროტეინი", "კრეატინი", "BCAA", "ვიტამინები"]
-        
-        return ChatResponse(
-            user_id=request.user_id,
-            response=response_text,
-            text=response_text,
-            choices=choices,
-            success=True
-        )
+        # V7-compatible response
+        return {
+            "response_text_geo": response_text,
+            "current_state": "CHAT",
+            "picked_product_ids": [],
+            "primary_image_url": "",
+            "carousel": None,
+            "quick_replies": [
+                {"title": "რომელია საუკეთესო?", "payload": "რომელია საუკეთესო?"},
+                {"title": "სხვა ვარიანტები", "payload": "სხვა ვარიანტები მაჩვენე"}
+            ],
+            "topic": None,
+            "recommended_index": None,
+            # SDK fields
+            "user_id": request.user_id,
+            "response": response_text,
+            "text": response_text,
+            "success": True
+        }
     except Exception as e:
         logger.error(f"Error: {e}")
         error_msg = "სამწუხაროდ, მოხდა შეცდომა."
