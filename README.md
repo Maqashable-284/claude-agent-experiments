@@ -1,92 +1,168 @@
-# Scoop AI Agent 🥤🤖
+# Scoop AI Agent SDK 🥤🤖
 
-**ქართული სპორტული კვების AI კონსულტანტი** - Claude Agent SDK + MongoDB
+**ქართული სპორტული კვების AI კონსულტანტი** - Standard Anthropic SDK + MongoDB
 
-[![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
-[![Claude Agent SDK](https://img.shields.io/badge/Claude-Agent%20SDK-orange.svg)](https://docs.anthropic.com/en/docs/agents-and-tools)
+[![Python 3.11](https://img.shields.io/badge/python-3.11-blue.svg)](https://www.python.org/downloads/)
+[![Anthropic SDK](https://img.shields.io/badge/Anthropic-SDK%20Standard-orange.svg)](https://docs.anthropic.com/)
 [![Cloud Run](https://img.shields.io/badge/Google-Cloud%20Run-blue.svg)](https://cloud.google.com/run)
+
+---
 
 ## 🎯 რა არის?
 
-Scoop AI არის აგენტური ჩატბოტი რომელიც იყენებს **Claude Agent SDK**-ს სპორტული კვების პროდუქტების საძიებლად და რჩევების მისაცემად ქართულ ენაზე.
+Scoop AI Agent SDK არის **სტანდარტული Anthropic SDK**-ზე დაფუძნებული აგენტური ჩატბოტი სპორტული კვების პროდუქტებისთვის. მიგრირებულია Claude Agent SDK-დან Cloud Run თავსებადობისთვის.
 
 ## ✨ ფუნქციონალი
 
-- 🔍 **პროდუქტების ძებნა** - MongoDB-დან real-time
+- 🔍 **პროდუქტების ძებნა** - MongoDB + Georgian→English translation
 - 💬 **ქართული ენა** - სრული Georgian support
 - 🧠 **Conversation Memory** - ახსოვს საუბრის ისტორია
-- 🛡️ **Security Hooks** - ბლოკავს საშიშ მოთხოვნებს
-- ⚡ **MCP Tools** - Claude თვითონ წყვეტს რა tool გამოიძახოს
-- 🚀 **Cloud Run** - Production-ready deployment
+- 🛡️ **Security Guards** - Prompt injection & blocked keywords
+- ⚡ **Tool Use** - Claude თვითონ წყვეტს რა tool გამოიძახოს
+- 🚀 **Cloud Run** - Production deployment europe-west1
+
+---
+
+## ⚠️ მნიშვნელოვანი: MongoDB Databases
+
+```
+⚡ PRODUCTION DATABASE: scoop_db ← გამოიყენე ეს!
+❌ არ გამოიყენო: scoop_ai (მხოლოდ conversations)
+```
+
+| Database | Collections | Products | გამოყენება |
+|----------|-------------|----------|------------|
+| `scoop_db` | 9 | ✅ 315 | **Production** |
+| `scoop_ai` | 1 | ❌ 0 | არ გამოიყენო |
+
+---
 
 ## 🏗️ არქიტექტურა
 
 ```
-User → FastAPI → ScoopAgent → ClaudeSDKClient → Claude API
-                                    ↓
-                              MCP Tools → MongoDB
+User Request
+    ↓
+FastAPI (/chat)
+    ↓
+ScoopAgent (Anthropic SDK)
+    ↓ tool_use
+Execute Tools (search_products, get_product_details)
+    ↓
+MongoDB (scoop_db.products)
+    ↓
+Return Response to User
 ```
 
-## 📁 სტრუქტურა
+**Agentic Loop:** Claude აანალიზებს მოთხოვნას → თვითონ წყვეტს tool-ის გამოძახებას → ასრულებს tools-ს → აბრუნებს საბოლოო პასუხს.
+
+---
+
+## 📁 პროექტის სტრუქტურა
 
 ```
 scoop_ai_agent/
-├── main.py              # FastAPI server
-├── config.py            # Settings
-├── Dockerfile           # Cloud Run deployment
-├── requirements.txt
+├── main.py              # FastAPI server + lifespan
+├── config.py            # Settings + System Prompt
+├── Dockerfile           # Cloud Run (Python 3.11)
+├── requirements.txt     # anthropic, fastapi, motor
 └── app/
-    ├── agent.py         # ClaudeSDKClient wrapper
-    ├── tools.py         # MCP Tools (@tool decorator)
-    ├── hooks.py         # Security guardrails
-    ├── database.py      # MongoDB connection
-    └── product_service.py # Product queries
+    ├── __init__.py
+    ├── agent.py         # ScoopAgent + Tool Definitions + Security
+    ├── database.py      # MongoDB connection manager
+    └── product_service.py # Product queries + QUERY_MAP
 ```
 
-## 🚀 გაშვება
+---
 
-### ლოკალურად
-```bash
-pip install -r requirements.txt
-cp .env.example .env
-# დაამატე API keys
-python main.py
-```
+## 🚀 Deployment
 
 ### Cloud Run Deploy
+
 ```bash
 gcloud run deploy scoop-ai-sdk \
   --source . \
   --region europe-west1 \
   --allow-unauthenticated \
-  --set-env-vars "ANTHROPIC_API_KEY=...,MONGODB_URI=..."
+  --set-env-vars "ANTHROPIC_API_KEY=sk-ant-api03-...,MONGODB_URI=mongodb+srv://scoop_admin:W6AuJLLnYrPnq.3@scoop.xbbeory.mongodb.net/?appName=Scoop,MONGODB_DATABASE=scoop_db,DEFAULT_MODEL=claude-3-5-haiku-20241022"
 ```
+
+### Service URL
+```
+https://scoop-ai-sdk-358331686110.europe-west1.run.app
+```
+
+---
 
 ## 🔧 Environment Variables
 
-| Variable | Description |
-|----------|-------------|
-| `ANTHROPIC_API_KEY` | Anthropic API key |
-| `MONGODB_URI` | MongoDB connection string |
-| `MONGODB_DATABASE` | Database name |
-| `DEFAULT_MODEL` | Claude model (default: claude-3-5-haiku-20241022) |
+| Variable | Value | Description |
+|----------|-------|-------------|
+| `ANTHROPIC_API_KEY` | `sk-ant-api03-...` | Anthropic API key |
+| `MONGODB_URI` | `mongodb+srv://...` | MongoDB Atlas connection |
+| `MONGODB_DATABASE` | `scoop_db` | ⚠️ **არა scoop_ai!** |
+| `DEFAULT_MODEL` | `claude-3-5-haiku-20241022` | Claude model |
+
+---
 
 ## 📡 API Endpoints
 
 | Endpoint | Method | Description |
 |----------|--------|-------------|
-| `/chat` | POST | მთავარი ჩატი |
-| `/health` | GET | Health check |
-| `/sessions` | GET | აქტიური სესიები |
-| `/db/status` | GET | MongoDB სტატუსი |
+| `/` | GET | Service info |
+| `/health` | GET | Health check + DB status |
+| `/chat` | POST | Chat with agent |
+| `/session/clear` | POST | Clear session history |
+| `/sessions` | GET | List active sessions |
 
-## 🤖 Botpress Integration
+### Chat Request
+```bash
+curl -X POST https://scoop-ai-sdk-xxx.run.app/chat \
+  -H "Content-Type: application/json" \
+  -d '{"user_id":"user123","message":"პროტეინი მაინტერესებს"}'
+```
 
-Botpress-თან დასაკავშირებლად გამოიყენე Cloud Run URL:
+### Response Format (Botpress Compatible)
+```json
+{
+  "user_id": "user123",
+  "response": "მოიძებნა 5 პროდუქტი...",
+  "text": "მოიძებნა 5 პროდუქტი...",
+  "success": true,
+  "choices": ["პროტეინი", "კრეატინი"]
+}
 ```
-POST https://scoop-ai-sdk-xxxxx.run.app/chat
-Body: {"user_id": "botpress_user", "message": "..."}
-```
+
+---
+
+## 🛡️ Security Features
+
+**Blocked Keywords:**
+- Illegal substances: steroid, anabolic, hgh, sarm
+- Prompt injection: "ignore instructions", "you are now"
+- Dangerous: overdose, suicide
+
+**Input Validation:**
+- Max message length: 5000 chars
+- Prompt injection pattern detection
+
+---
+
+## 🔄 Migration Notes
+
+**Claude Agent SDK → Standard Anthropic SDK**
+
+| Feature | Agent SDK | Standard SDK |
+|---------|-----------|--------------|
+| Tool calling | @tool decorator | tool_use API |
+| Hooks | PreToolUse/PostToolUse | Manual check |
+| MCP Server | create_sdk_mcp_server | Not used |
+| Node.js | Required (CLI) | Not required |
+
+**Why:**
+- Agent SDK had `Server.__init__()` bug on Cloud Run
+- Standard SDK is more stable and simpler
+
+---
 
 ## 📄 License
 
