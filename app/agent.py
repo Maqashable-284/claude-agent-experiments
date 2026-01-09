@@ -159,10 +159,17 @@ async def search_products(args: Dict) -> str:
     if results:
         text = f"მოიძებნა {len(results)} პროდუქტი:\n\n"
         for i, p in enumerate(results, 1):
-            name = p.get("name_ka") or p.get("name", "Unknown")
+            name = p.get("name") or p.get("name_ka", "Unknown")
             price = p.get("price", 0)
-            status = "✅ მარაგშია" if p.get("in_stock") else "❌ ამოიწურა"
-            text += f"{i}. **{name}**\n   ფასი: {price} ₾ | {status}\n   ID: {p.get('id', 'N/A')}\n\n"
+            brand = p.get("brand", "")
+            servings = p.get("servings", "")
+            text += f"{i}. **{name}**\n"
+            text += f"   💰 ფასი: {price} ₾"
+            if brand:
+                text += f" | 🏷️ {brand}"
+            if servings:
+                text += f" | 📦 {servings} პორცია"
+            text += f"\n\n"
         return text
     else:
         return f"სამწუხაროდ, '{query}' მოთხოვნით პროდუქტი ვერ მოიძებნა."
