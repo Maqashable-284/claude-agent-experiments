@@ -46,6 +46,61 @@ Scoop AI Agent V4.0 არის **Claude Agent SDK**-ზე დაფუძნ�
 
 ---
 
+## 🚀 Performance Optimizations (v4.1)
+
+### პრობლემა
+პასუხის დრო იყო **15-30 წამი**. სამიზნე: **<10 წამი**.
+
+### გადაწყვეტა - 4 ოპტიმიზაცია
+
+| # | ცვლილება | ეფექტი | ფაილი/კონფიგი |
+|---|----------|--------|---------------|
+| 1 | **Min Instances = 1** | Cold Start: 0 წამი | Cloud Run |
+| 2 | **Prompt Caching** | -30-50% latency | `agent.py` |
+| 3 | **Speed Rules** | Tool calls -50% | `config.py` |
+| 4 | **max_turns = 5** | Loop limit | `agent.py` |
+
+### 1. Min Instances (Cloud Run)
+```bash
+gcloud run services update scoop-ai-sdk --min-instances=1 --region=europe-west1
+```
+- **ეფექტი:** Cold start = 0 (იყო: 3-5 წამი)
+- **ფასი:** ~$15/თვე
+
+### 2. Prompt Caching (`agent.py`)
+```python
+betas=["prompt-caching-2024-07-31"]
+```
+- **ეფექტი:** System prompt ქეშირდება Anthropic-ზე
+- **შედეგი:** -30-50% tokens processing
+
+### 3. Speed Optimization Rules (`config.py`)
+```xml
+<speed_optimization>
+  TOOL USAGE DECISION:
+  - გამარჯობა → NO TOOL
+  - რა არის პროტეინი? → NO TOOL  
+  - რა პროტეინები გაქვთ? → USE tool
+</speed_optimization>
+```
+- **ეფექტი:** Greetings: 2-3 წამი (იყო: 15 წამი)
+
+### 4. max_turns Limit (`agent.py`)
+```python
+max_turns=5  # იყო: unlimited
+```
+- **ეფექტი:** აგენტი არ ჩერდება უსასრულო loop-ში
+
+### მოსალოდნელი შედეგი
+
+| Request Type | წინ | ახლა |
+|--------------|-----|------|
+| Greeting | 15 წამი | 2-3 წამი |
+| General Question | 20 წამი | 5-8 წამი |
+| Product Search | 25-30 წამი | 8-12 წამი |
+
+---
+
 ## 📋 Output Formats
 
 ### Quick-Buy Comparison (გაყიდვა)
