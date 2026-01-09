@@ -2,8 +2,10 @@
 Product Service - MongoDB Product Queries.
 
 This service replaces the mock data with real MongoDB queries.
+Uses the same QUERY_MAP as the original Scoop AI for Georgian→English translation.
 """
 
+import re
 from typing import Any, Dict, List, Optional
 import logging
 
@@ -12,12 +14,36 @@ from motor.motor_asyncio import AsyncIOMotorDatabase
 logger = logging.getLogger(__name__)
 
 
+# Georgian → English keyword mapping (from original Scoop AI)
+QUERY_MAP = {
+    # Products
+    "კრეატინ": "creatine", "პროტეინ": "protein", "ცილა": "protein",
+    "bcaa": "bcaa", "ამინო": "amino", "პრევორკაუტ": "pre-workout",
+    "ვიტამინ": "vitamin", "ომეგა": "omega",
+    "გეინერ": "gainer|mass|weight", "გეინერი": "gainer|mass|weight",
+    # Goals
+    "მასა": "protein|gainer|mass", "წონა": "protein|gainer", "მომატება": "protein|gainer",
+    "გამშრალება": "carnitine|ripped|burner", "კლება": "carnitine|burn",
+    "გასახდომ": "carnitine|burner|fat",
+    "ენერგია": "pre-workout|energy", "ძალა": "creatine|pre-workout",
+    # Muscle  
+    "კუნთ": "protein|creatine|bcaa|amino", "მუსკულ": "protein|creatine|bcaa"
+}
+
+# Category map
+CATEGORY_MAP = {
+    "პროტეინი": "protein",
+    "კრეატინი": "creatine",
+    "ვიტამინები": "vitamin",
+    "ამინომჟავები": "bcaa|amino",
+}
+
+
 class ProductService:
     """
     Product service for MongoDB operations.
     
-    Collections used:
-    - products: Main product catalog
+    Uses hybrid search: regex with Georgian→English translation.
     """
     
     def __init__(self, db: AsyncIOMotorDatabase):
@@ -33,26 +59,45 @@ class ProductService:
         limit: int = 10
     ) -> List[Dict[str, Any]]:
         """
-        Search for products in MongoDB.
+        Search for products using Georgian→English translation.
         
-        Uses text search and optional filters.
+        This matches the original Scoop AI search logic.
         """
-        # Build filter
-        filter_query = {}
+        query_lower = query.lower()
         
-        # Text search on name and description
-        if query:
-            filter_query["$or"] = [
-                {"name": {"$regex": query, "$options": "i"}},
-                {"name_ka": {"$regex": query, "$options": "i"}},
-                {"description": {"$regex": query, "$options": "i"}},
-                {"brand": {"$regex": query, "$options": "i"}},
-                {"category": {"$regex": query, "$options": "i"}},
-            ]
+        # Build search keywords from Georgian→English map
+        keywords = []
+        for geo, eng in QUERY_MAP.items():
+            if geo in query_lower:
+                keywords.extend(eng.split("|"))
         
-        # Category filter
+        # Add original query if no keywords found
+        if not keywords:
+            keywords = [query_lower]
+        
+        # Add category if provided
         if category:
-            filter_query["category"] = category
+            eng_cat = CATEGORY_MAP.get(category.lower(), category)
+            keywords.append(eng_cat)
+        
+        # Escape regex special chars
+        keywords_escaped = [re.escape(kw) for kw in keywords]
+        pattern = "|".join(set(keywords_escaped))
+        
+        if not pattern:
+            return []
+        
+        # Build regex filter
+        regex = {"$regex": pattern, "$options": "i"}
+        
+        filter_query = {
+            "$or": [
+                {"name": regex},
+                {"brand": regex},
+                {"category": regex},
+                {"description": regex}
+            ]
+        }
         
         # Price filter
         if max_price:
@@ -63,8 +108,7 @@ class ProductService:
             filter_query["in_stock"] = True
         
         try:
-            cursor = self.collection.find(filter_query).limit(limit)
-            products = await cursor.to_list(length=limit)
+            products = await self.collection.find(filter_query).limit(limit).to_list(length=limit)
             
             # Convert ObjectId to string
             for p in products:
@@ -72,7 +116,7 @@ class ProductService:
                     p["id"] = str(p["_id"])
                     del p["_id"]
             
-            logger.info(f"Found {len(products)} products for query: {query}")
+            logger.info(f"Found {len(products)} products for query: {query} (keywords: {keywords})")
             return products
             
         except Exception as e:
@@ -84,7 +128,6 @@ class ProductService:
         try:
             from bson import ObjectId
             
-            # Try as ObjectId first, then as string
             try:
                 filter_q = {"_id": ObjectId(product_id)}
             except:
@@ -103,51 +146,6 @@ class ProductService:
         except Exception as e:
             logger.error(f"Get product failed: {e}")
             return None
-    
-    async def check_availability(self, product_id: str) -> Dict[str, Any]:
-        """Check product availability."""
-        product = await self.get_product_by_id(product_id)
-        
-        if not product:
-            return {"available": False, "error": "პროდუქტი ვერ მოიძებნა"}
-        
-        return {
-            "product_id": product.get("id"),
-            "product_name": product.get("name_ka", product.get("name")),
-            "available": product.get("in_stock", False),
-            "quantity": product.get("stock_count", 0)
-        }
-    
-    async def get_categories(self) -> List[Dict[str, Any]]:
-        """Get all product categories with counts."""
-        try:
-            pipeline = [
-                {"$group": {
-                    "_id": "$category",
-                    "count": {"$sum": 1},
-                    "in_stock_count": {
-                        "$sum": {"$cond": ["$in_stock", 1, 0]}
-                    }
-                }},
-                {"$sort": {"count": -1}}
-            ]
-            
-            cursor = self.collection.aggregate(pipeline)
-            categories = await cursor.to_list(length=50)
-            
-            return [
-                {
-                    "id": cat["_id"],
-                    "name": cat["_id"],
-                    "product_count": cat["count"],
-                    "in_stock_count": cat["in_stock_count"]
-                }
-                for cat in categories
-            ]
-            
-        except Exception as e:
-            logger.error(f"Get categories failed: {e}")
-            return []
 
 
 # Global service instance
