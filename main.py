@@ -1,8 +1,8 @@
 """
-Scoop AI Agent - FastAPI Server.
+Scoop AI Agent V3 - FastAPI Server.
 
+Powered by Claude Agent SDK for automatic tool orchestration.
 Optimized for Cloud Run + Botpress Integration.
-Uses standard Anthropic SDK with tool_use.
 """
 
 import logging
@@ -15,9 +15,10 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
 from config import get_settings
-from app.agent import get_agent, shutdown_agent, set_product_service
+from app.agent import get_agent, shutdown_agent
 from app.database import db_manager
 from app.product_service import get_product_service
+from app.tools import set_tool_service  # NEW: Inject service into tools
 
 # Configure logging
 logging.basicConfig(
@@ -32,33 +33,35 @@ logger = logging.getLogger("scoop_ai")
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Startup and shutdown - optimized for Cloud Run."""
-    logger.info("🚀 Starting Scoop AI Agent Server...")
-    
+    logger.info("Starting Scoop AI Agent V3 (Claude Agent SDK)...")
+
     # Connect MongoDB in background (non-blocking)
     import asyncio
-    
+
     async def connect_mongodb():
         try:
             settings = get_settings()
             mongodb_uri = os.getenv("MONGODB_URI", settings.mongodb_uri)
             mongodb_database = os.getenv("MONGODB_DATABASE", settings.mongodb_database)
-            
+
             await db_manager.connect(mongodb_uri, mongodb_database)
-            
+
             db = await db_manager.get_database()
             product_service = get_product_service(db)
-            set_product_service(product_service)
-            
-            logger.info("✅ MongoDB connected")
+
+            # Inject service into Tools (NEW for V3)
+            set_tool_service(product_service)
+
+            logger.info("MongoDB connected & Tools configured")
         except Exception as e:
-            logger.warning(f"⚠️ MongoDB failed: {e} - using mock data")
-    
+            logger.warning(f"MongoDB failed: {e} - using mock data")
+
     asyncio.create_task(connect_mongodb())
-    logger.info("✅ Server started")
-    
+    logger.info("Server started (SDK mode)")
+
     yield
-    
-    logger.info("🛑 Shutting down...")
+
+    logger.info("Shutting down...")
     await shutdown_agent()
     await db_manager.disconnect()
 
@@ -66,9 +69,9 @@ async def lifespan(app: FastAPI):
 # ==================== FastAPI App ====================
 
 app = FastAPI(
-    title="Scoop AI Agent",
-    description="სპორტული კვების კონსულტანტი - Anthropic SDK",
-    version="2.0.0",
+    title="Scoop AI Agent V3",
+    description="სპორტული კვების კონსულტანტი - Claude Agent SDK",
+    version="3.0.0",
     lifespan=lifespan
 )
 
@@ -107,9 +110,9 @@ class ChatResponse(BaseModel):
 @app.get("/")
 async def root():
     return {
-        "name": "Scoop AI Agent SDK",
-        "version": "2.0.0",
-        "sdk": "Anthropic SDK (standard)",
+        "name": "Scoop AI Agent V3",
+        "version": "3.0.0",
+        "sdk": "Claude Agent SDK",
         "docs": "/docs"
     }
 
@@ -118,7 +121,8 @@ async def root():
 async def health():
     return {
         "status": "healthy",
-        "database": "connected" if db_manager.is_connected else "mock"
+        "database": "connected" if db_manager.is_connected else "mock",
+        "sdk": "claude-agent-sdk"
     }
 
 
@@ -127,9 +131,9 @@ async def chat(request: ChatRequest):
     try:
         agent = get_agent()
         logger.info(f"Chat: {request.user_id} - {request.message[:50]}...")
-        
+
         response_text = await agent.chat(request.user_id, request.message)
-        
+
         # V7-compatible response
         return {
             "response_text_geo": response_text,
@@ -152,13 +156,15 @@ async def chat(request: ChatRequest):
     except Exception as e:
         logger.error(f"Error: {e}")
         error_msg = "სამწუხაროდ, მოხდა შეცდომა."
-        return ChatResponse(
-            user_id=request.user_id,
-            response=error_msg,
-            text=error_msg,
-            success=False,
-            error=str(e)
-        )
+        return {
+            "response_text_geo": error_msg,
+            "current_state": "CHAT",
+            "user_id": request.user_id,
+            "response": error_msg,
+            "text": error_msg,
+            "success": False,
+            "error": str(e)
+        }
 
 
 @app.post("/session/clear")
@@ -176,5 +182,5 @@ async def list_sessions():
 
 if __name__ == "__main__":
     import uvicorn
-    port = int(os.getenv("PORT", 8000))
+    port = int(os.getenv("PORT", 8080))
     uvicorn.run("main:app", host="0.0.0.0", port=port)
