@@ -245,8 +245,9 @@ async def chat(request: ChatRequest):
             "primary_image_url": "",
             "carousel": None,
             "quick_replies": [
-                {"title": "რომელია საუკეთესო?", "payload": "რომელია საუკეთესო?"},
-                {"title": "სხვა ვარიანტები", "payload": "სხვა ვარიანტები მაჩვენე"}
+                {"title": "🔍 დეტალები", "payload": "მეტი ინფორმაცია მინდა"},
+                {"title": "💰 შეადარე ფასები", "payload": "ფასები შეადარე"},
+                {"title": "🛒 სხვა ვარიანტები", "payload": "სხვა ვარიანტები მაჩვენე"}
             ],
             "topic": None,
             "recommended_index": None,
