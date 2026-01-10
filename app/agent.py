@@ -214,15 +214,13 @@ class ScoopAgent:
         """
         Clear user's conversation session.
 
-        Disconnects and removes the client, forcing a fresh session on next chat.
+        Removes the client session, forcing a fresh session on next chat.
+        Note: We don't await disconnect() to avoid asyncio cancel scope errors.
         """
         if user_id in self._sessions:
-            try:
-                await self._sessions[user_id].client.disconnect()
-            except Exception as e:
-                logger.warning(f"Error disconnecting client for {user_id}: {e}")
-            finally:
-                del self._sessions[user_id]
+            # Just remove the session - don't try to disconnect
+            # Disconnecting from a different task causes cancel scope errors
+            del self._sessions[user_id]
             logger.info(f"Session cleared for user: {user_id}")
             return True
         return False
