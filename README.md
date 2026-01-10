@@ -67,10 +67,9 @@ gcloud run services update scoop-ai-sdk --min-instances=1 --region=europe-west1
 - **ეფექტი:** Cold start = 0 (იყო: 3-5 წამი)
 - **ფასი:** ~$15/თვე
 
-### 2. Prompt Caching (`agent.py`)
-```python
-betas=["prompt-caching-2024-07-31"]
-```
+### 2. Prompt Caching (Automatic)
+
+Claude API ავტომატურად აკეთებს system prompt-ის ქეშირებას.
 - **ეფექტი:** System prompt ქეშირდება Anthropic-ზე
 - **შედეგი:** -30-50% tokens processing
 
@@ -98,6 +97,42 @@ max_turns=5  # იყო: unlimited
 | Greeting | 15 წამი | 2-3 წამი |
 | General Question | 20 წამი | 5-8 წამი |
 | Product Search | 25-30 წამი | 8-12 წამი |
+
+---
+
+## 🔘 LLM-Generated Quick Replies
+
+Backend აბრუნებს კონტექსტურ quick_replies-ს:
+
+### Sales Intent (პროდუქტების პასუხზე)
+```
+• 🔄 Whey vs Isolate შეადარე
+• 💰 100₾-მდე ვარიანტები
+• 🏋️ აღდგენისთვის რომელია საუკეთესო?
+```
+
+### Science Intent (მეცნიერულ პასუხზე)
+```
+• 📊 რა დოზა მჭირდება?
+• ⏰ როდის მივიღო?
+• 🔬 როგორ მუშაობს ორგანიზმში?
+```
+
+---
+
+## 🧪 Evaluation System
+
+`evals/` folder შეიცავს Gemini-based LLM-as-Judge სისტემას:
+
+```bash
+cd evals/
+export GEMINI_API_KEY="your-key"
+python evaluate.py
+```
+
+- **15 test scenarios** (greeting, product, recommendation, science, edge cases)
+- **Gemini Flash** როგორც მოსამართლე (იაფი: $0.125/1M tokens)
+- შედეგები `evals/results/`-ში
 
 ---
 
