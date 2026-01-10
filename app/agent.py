@@ -94,8 +94,8 @@ class ScoopAgent:
             # Permission mode - accept edits since we only have read-only tools
             permission_mode=self.settings.permission_mode,
 
-            # 🚀 PERFORMANCE: Enable prompt caching (reduces latency ~30-50%)
-            betas=["prompt-caching-2024-07-31"],
+            # Note: Prompt caching is handled automatically by Claude API
+            # The SDK doesn't require explicit beta headers for this
 
             # MCP Server registration
             mcp_servers={
