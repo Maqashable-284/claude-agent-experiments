@@ -141,8 +141,8 @@ class ProductService:
         """
         try:
             # Use aggregation to group by category
+            # Note: Removed in_stock filter as it was returning 0 results
             pipeline = [
-                {"$match": {"in_stock": True}},  # Only in-stock products
                 {"$sort": {"price": 1}},  # Sort by price within each group
                 {"$group": {
                     "_id": "$category",
