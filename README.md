@@ -100,6 +100,55 @@ max_turns=5  # იყო: unlimited
 
 ---
 
+## 🔧 v4.2 Updates (2026-01-11)
+
+### New Tool: get_all_categories
+
+**პრობლემა:** "რა გაქვს მარაგში?" იწვევდა timeout (4+ tool calls × 20s = 80s+)
+
+**გადაწყვეტა:** ერთი `get_all_categories` tool - ყველა კატეგორია ერთ ბრძანებაში:
+
+```python
+# app/tools.py
+@mcp_tool(name="get_all_categories")
+def get_all_categories(products_per_category: int = 3):
+    """Returns all products grouped by category in a single call."""
+```
+
+### MongoDB Query Fix
+
+**პრობლემა:** Aggregation pipeline 0 results აბრუნებდა.
+
+**გადაწყვეტა:** Python-based grouping (უფრო reliable):
+
+```python
+# app/product_service.py
+all_products = await self.collection.find({}).to_list(length=100)
+# Group by category in Python
+for p in all_products:
+    category = p.get("category", "other")
+    result[category].append(p)
+```
+
+### Debug Logging
+
+Agent response tracking:
+```python
+logger.info(f"Total messages received: {msg_count}, response length: {len(full_response)}")
+```
+
+### Performance Results (v4.2)
+
+| Query Type | დრო |
+|------------|-----|
+| მარტივი კითხვა (NO TOOL) | **9-14 წამი** ⚡ |
+| პროდუქტის ძებნა (WITH TOOL) | **20-40 წამი** |
+| "რა გაქვს მარაგში?" | **25-30 წამი** ✅ (იყო: TIMEOUT) |
+
+### Database Stats
+- **100 პროდუქტი**
+- **13 კატეგორია**
+
 ## 🔘 LLM-Generated Quick Replies
 
 Backend აბრუნებს კონტექსტურ quick_replies-ს:
