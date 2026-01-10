@@ -106,6 +106,7 @@ class ScoopAgent:
             allowed_tools=[
                 "mcp__scoop-products__search_products",
                 "mcp__scoop-products__get_product_details",
+                "mcp__scoop-products__get_all_categories",
             ],
 
             # Security Hooks
@@ -115,8 +116,10 @@ class ScoopAgent:
                 "PostToolUse": [log_tool_result],
             },
 
-            # 🚀 PERFORMANCE: Limit turns for faster responses (was: unlimited)
-            max_turns=5,
+            # 🚀 PERFORMANCE: Limit turns for faster responses
+            # Reduced from 5 to 2 to prevent timeout on broad queries
+            # Each turn adds 10-40s Claude thinking time + tool execution
+            max_turns=2,
         )
 
     async def _get_or_create_client(self, user_id: str) -> ClaudeSDKClient:

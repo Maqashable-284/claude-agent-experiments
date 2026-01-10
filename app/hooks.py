@@ -120,6 +120,7 @@ async def validate_tool_use(
     allowed_tools = [
         "mcp__scoop-products__search_products",
         "mcp__scoop-products__get_product_details",
+        "mcp__scoop-products__get_all_categories",
     ]
 
     if tool_name not in allowed_tools:

@@ -123,6 +123,57 @@ class ProductService:
             logger.error(f"Product search failed: {e}")
             return []
     
+    async def get_all_categories_with_products(
+        self,
+        products_per_category: int = 3
+    ) -> Dict[str, List[Dict[str, Any]]]:
+        """
+        Get all products grouped by category.
+
+        Returns a dict like:
+        {
+            "protein": [product1, product2, product3],
+            "creatine": [product1, product2],
+            ...
+        }
+
+        This enables answering "show all products" in a single tool call.
+        """
+        try:
+            # Use aggregation to group by category
+            pipeline = [
+                {"$match": {"in_stock": True}},  # Only in-stock products
+                {"$sort": {"price": 1}},  # Sort by price within each group
+                {"$group": {
+                    "_id": "$category",
+                    "products": {"$push": "$$ROOT"},
+                    "count": {"$sum": 1}
+                }},
+                {"$sort": {"_id": 1}}  # Sort categories alphabetically
+            ]
+
+            cursor = self.collection.aggregate(pipeline)
+            result = {}
+
+            async for doc in cursor:
+                category = doc["_id"] or "other"
+                products = doc["products"][:products_per_category]
+
+                # Clean up ObjectId
+                for p in products:
+                    if "_id" in p:
+                        p["id"] = str(p["_id"])
+                        del p["_id"]
+
+                result[category] = products
+
+            logger.info(f"Found {len(result)} categories with products")
+            return result
+
+        except Exception as e:
+            logger.error(f"Get all categories failed: {e}")
+            return {}
+
     async def get_product_by_id(self, product_id: str) -> Optional[Dict[str, Any]]:
         """Get a single product by ID."""
         try:

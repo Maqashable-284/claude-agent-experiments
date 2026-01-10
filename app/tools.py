@@ -222,11 +222,91 @@ async def get_product_details_tool(args: Dict[str, Any]) -> Dict[str, Any]:
         return {"content": [{"type": "text", "text": f"პროდუქტი ID '{product_id}' ვერ მოიძებნა."}]}
 
 
+# ==================== Category Listing Tool ====================
+
+# Category display names (Georgian)
+CATEGORY_NAMES = {
+    "protein": "🥛 პროტეინი",
+    "creatine": "⚡ კრეატინი",
+    "bcaa": "💪 BCAA / ამინომჟავები",
+    "amino": "💪 ამინომჟავები",
+    "pre_workout": "🔥 პრე-ვორქაუთი",
+    "vitamin": "💊 ვიტამინები",
+    "omega": "🐟 ომეგა-3",
+    "gainer": "📈 გეინერი",
+    "other": "📦 სხვა"
+}
+
+
+@tool(
+    name="get_all_categories",
+    description="ყველა პროდუქტი კატეგორიების მიხედვით. გამოიყენეთ როცა მომხმარებელი ითხოვს 'ყველა პროდუქტი', 'რა გაქვს მარაგში', 'დაყავი კატეგორიებად'. Use for 'show all products' or 'list by category' requests.",
+    input_schema={
+        "type": "object",
+        "properties": {
+            "products_per_category": {
+                "type": "integer",
+                "description": "რამდენი პროდუქტი თითოეული კატეგორიიდან (default: 2)",
+                "default": 2
+            }
+        },
+        "required": []
+    }
+)
+async def get_all_categories_tool(args: Dict[str, Any]) -> Dict[str, Any]:
+    """Get all products grouped by category - single tool call for broad queries."""
+    products_per_cat = args.get("products_per_category", 2)
+
+    logger.info(f"Tool Call: get_all_categories(products_per_category={products_per_cat})")
+
+    categories = {}
+
+    if _service:
+        try:
+            categories = await _service.get_all_categories_with_products(
+                products_per_category=products_per_cat
+            )
+        except Exception as e:
+            logger.error(f"Get all categories error: {e}")
+
+    # Fallback to mock data grouped
+    if not categories:
+        for p in MOCK_PRODUCTS:
+            cat = p.get("category", "other")
+            if cat not in categories:
+                categories[cat] = []
+            if len(categories[cat]) < products_per_cat:
+                categories[cat].append(p)
+
+    if categories:
+        text = f"📋 **მარაგში გვაქვს {sum(len(v) for v in categories.values())} პროდუქტი {len(categories)} კატეგორიაში:**\n\n"
+
+        for cat_key, products in categories.items():
+            cat_name = CATEGORY_NAMES.get(cat_key, f"📦 {cat_key}")
+            text += f"### {cat_name}\n"
+
+            for p in products:
+                name = p.get("name") or p.get("name_ka", "Unknown")
+                price = p.get("price", 0)
+                product_url = p.get("product_url") or p.get("url") or p.get("link", "")
+
+                text += f"- **{name}** — {price} ₾"
+                if product_url:
+                    text += f" [🔗 ნახვა]({product_url})"
+                text += "\n"
+
+            text += "\n"
+
+        return {"content": [{"type": "text", "text": text}]}
+    else:
+        return {"content": [{"type": "text", "text": "სამწუხაროდ, ამჟამად მარაგში პროდუქტები არ იძებნება."}]}
+
+
 # ==================== MCP Server Factory ====================
 
 def create_scoop_mcp_server():
     """Creates the in-process MCP server instance."""
     return create_sdk_mcp_server(
         name="scoop-products",
-        tools=[search_products_tool, get_product_details_tool]
+        tools=[search_products_tool, get_product_details_tool, get_all_categories_tool]
     )
