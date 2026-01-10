@@ -117,9 +117,9 @@ class ScoopAgent:
             },
 
             # 🚀 PERFORMANCE: Limit turns for faster responses
-            # Reduced from 5 to 2 to prevent timeout on broad queries
-            # Each turn adds 10-40s Claude thinking time + tool execution
-            max_turns=2,
+            # NOTE: Temporarily set to 5 for debugging empty response issue
+            # Was 2 but may have been too restrictive
+            max_turns=5,
         )
 
     async def _get_or_create_client(self, user_id: str) -> ClaudeSDKClient:
@@ -180,18 +180,26 @@ class ScoopAgent:
         try:
             # Send message to agent
             # SDK handles tool loops automatically
+            logger.info(f"Sending query to Claude SDK for user {user_id}")
             await client.query(message)
 
             # Collect response
             full_response = ""
+            msg_count = 0
 
             async for msg in client.receive_response():
+                msg_count += 1
+                logger.info(f"Received message #{msg_count}: {type(msg).__name__}")
                 if isinstance(msg, AssistantMessage):
                     for block in msg.content:
                         if isinstance(block, TextBlock):
                             full_response += block.text
+                            logger.info(f"TextBlock received, length: {len(block.text)}")
 
+            logger.info(f"Total messages received: {msg_count}, response length: {len(full_response)}")
+            
             if not full_response:
+                logger.warning(f"Empty response for user {user_id} after {msg_count} messages")
                 full_response = "ბოდიში, პასუხის გენერირება ვერ მოხერხდა. გთხოვთ სცადოთ თავიდან."
 
             # Update session activity
