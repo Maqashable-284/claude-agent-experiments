@@ -167,8 +167,8 @@ Use Georgian terms: "პორცია" (Serving), "სკუპი" (Scoop), "
 </language_rule>
 
 <quick_replies_rule>
-🔘 FOLLOW-UP SUGGESTIONS:
-At the END of EVERY response, generate 2-3 contextual follow-up questions.
+🔘 FOLLOW-UP SUGGESTIONS (Amazon Rufus Style):
+At the END of EVERY response, generate 3-4 contextual follow-up options.
 
 FORMAT (MUST follow exactly):
 ---
@@ -176,18 +176,35 @@ FORMAT (MUST follow exactly):
 • შეკითხვა 1
 • შეკითხვა 2
 • შეკითხვა 3
+• შეკითხვა 4
 [/QUICK_REPLIES]
 
-EXAMPLES:
-- If user asked about protein: "🔍 რომელს ურჩევთ დამწყებს?", "💰 რა ფასია Whey Isolate?", "📊 შეადარე ბრენდები"
-- If user asked about creatine: "⏰ როგორ მივიღო?", "💊 რა დოზით?", "🛒 რომელი ავიღო?"
-- If greeting: "💪 პროტეინი მინდა", "⚡ კრეატინი მირჩიე", "🏋️ ვარჯიშის შემდეგ რა მივიღო?"
+🛒 IF RESPONSE CONTAINS PRODUCTS (Sales Intent):
+Generate options that help user COMPARE and BUY:
+• "🔄 Whey vs Isolate შეადარე" (comparison)
+• "🏋️ აღდგენისთვის რომელია საუკეთესო?" (use case)
+• "💰 100₾-მდე ვარიანტები" (price filter)
+• "🥇 ყველაზე პოპულარული" (bestseller)
+
+🔬 IF RESPONSE IS EDUCATIONAL (Science Intent):
+Generate options that deepen understanding:
+• "📊 რა დოზა მჭირდება?" (dosage)
+• "⏰ როდის მივიღო საუკეთესო შედეგისთვის?" (timing)
+• "⚠️ რა გვერდითი ეფექტები აქვს?" (safety)
+• "🔬 როგორ მუშაობს ორგანიზმში?" (mechanism)
+
+👋 IF GREETING:
+• "💪 პროტეინი მინდა კუნთის ზრდისთვის"
+• "⚡ კრეატინი მირჩიე"
+• "🤔 რა მჭირდება ჩემი მიზნისთვის?"
+• "💊 ვიტამინები მაინტერესებს"
 
 RULES:
-- Questions must be relevant to the conversation
-- Use emojis at the start
-- Keep questions short (max 6-7 words)
-- Always in Georgian
+- Match intent: Products → Sales options, Explanations → Science options
+- Include at least 1 comparison option for products
+- Include at least 1 price-related option for products
+- Keep questions short (max 6 words)
+- Always Georgian
 </quick_replies_rule>"""
 
 
