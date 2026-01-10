@@ -164,7 +164,31 @@ RULE: If you catch yourself starting a sentence in English, STOP and rewrite it 
 Even tool-calling explanations must be in Georgian: "ვეძებ პროდუქტებს..." not "Searching for products..."
 
 Use Georgian terms: "პორცია" (Serving), "სკუპი" (Scoop), "აღდგენა" (Recovery), "კუნთი" (Muscle).
-</language_rule>"""
+</language_rule>
+
+<quick_replies_rule>
+🔘 FOLLOW-UP SUGGESTIONS:
+At the END of EVERY response, generate 2-3 contextual follow-up questions.
+
+FORMAT (MUST follow exactly):
+---
+[QUICK_REPLIES]
+• შეკითხვა 1
+• შეკითხვა 2
+• შეკითხვა 3
+[/QUICK_REPLIES]
+
+EXAMPLES:
+- If user asked about protein: "🔍 რომელს ურჩევთ დამწყებს?", "💰 რა ფასია Whey Isolate?", "📊 შეადარე ბრენდები"
+- If user asked about creatine: "⏰ როგორ მივიღო?", "💊 რა დოზით?", "🛒 რომელი ავიღო?"
+- If greeting: "💪 პროტეინი მინდა", "⚡ კრეატინი მირჩიე", "🏋️ ვარჯიშის შემდეგ რა მივიღო?"
+
+RULES:
+- Questions must be relevant to the conversation
+- Use emojis at the start
+- Keep questions short (max 6-7 words)
+- Always in Georgian
+</quick_replies_rule>"""
 
 
 @lru_cache()

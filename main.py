@@ -237,24 +237,56 @@ async def chat(request: ChatRequest):
 
         response_text = await agent.chat(request.user_id, request.message)
 
+        # Parse quick_replies from LLM response
+        quick_replies = []
+        clean_response = response_text
+        
+        # Check for [QUICK_REPLIES] section
+        if "[QUICK_REPLIES]" in response_text and "[/QUICK_REPLIES]" in response_text:
+            try:
+                # Extract the quick replies section
+                start = response_text.find("[QUICK_REPLIES]")
+                end = response_text.find("[/QUICK_REPLIES]") + len("[/QUICK_REPLIES]")
+                qr_section = response_text[start:end]
+                
+                # Remove from clean response (including the --- separator)
+                clean_response = response_text[:start].rstrip()
+                if clean_response.endswith("---"):
+                    clean_response = clean_response[:-3].rstrip()
+                
+                # Parse individual replies
+                lines = qr_section.replace("[QUICK_REPLIES]", "").replace("[/QUICK_REPLIES]", "").strip().split("\n")
+                for line in lines:
+                    line = line.strip()
+                    if line.startswith("•"):
+                        text = line[1:].strip()
+                        if text:
+                            quick_replies.append({"title": text, "payload": text})
+            except Exception as e:
+                logger.warning(f"Failed to parse quick_replies: {e}")
+        
+        # Fallback to static replies if none parsed
+        if not quick_replies:
+            quick_replies = [
+                {"title": "🔍 მეტი ინფორმაცია", "payload": "მეტი დეტალები მინდა"},
+                {"title": "💰 ფასები", "payload": "ფასები შეადარე"},
+                {"title": "🛒 სხვა ვარიანტები", "payload": "სხვა ვარიანტები მაჩვენე"}
+            ]
+
         # V7-compatible response
         return {
-            "response_text_geo": response_text,
+            "response_text_geo": clean_response,
             "current_state": "CHAT",
             "picked_product_ids": [],
             "primary_image_url": "",
             "carousel": None,
-            "quick_replies": [
-                {"title": "🔍 დეტალები", "payload": "მეტი ინფორმაცია მინდა"},
-                {"title": "💰 შეადარე ფასები", "payload": "ფასები შეადარე"},
-                {"title": "🛒 სხვა ვარიანტები", "payload": "სხვა ვარიანტები მაჩვენე"}
-            ],
+            "quick_replies": quick_replies,
             "topic": None,
             "recommended_index": None,
             # SDK fields
             "user_id": request.user_id,
-            "response": response_text,
-            "text": response_text,
+            "response": clean_response,
+            "text": clean_response,
             "success": True
         }
 
