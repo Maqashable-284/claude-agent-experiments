@@ -140,34 +140,31 @@ class ProductService:
         This enables answering "show all products" in a single tool call.
         """
         try:
-            # Use aggregation to group by category
-            # Note: Removed in_stock filter as it was returning 0 results
-            pipeline = [
-                {"$sort": {"price": 1}},  # Sort by price within each group
-                {"$group": {
-                    "_id": "$category",
-                    "products": {"$push": "$$ROOT"},
-                    "count": {"$sum": 1}
-                }},
-                {"$sort": {"_id": 1}}  # Sort categories alphabetically
-            ]
-
-            cursor = self.collection.aggregate(pipeline)
-            result = {}
-
-            async for doc in cursor:
-                category = doc["_id"] or "other"
-                products = doc["products"][:products_per_category]
-
+            # Simple approach: fetch all products and group in Python
+            # This is more reliable than MongoDB aggregation
+            all_products = await self.collection.find({}).sort("price", 1).to_list(length=100)
+            
+            logger.info(f"Fetched {len(all_products)} total products for category grouping")
+            
+            # Group by category
+            result: Dict[str, List[Dict[str, Any]]] = {}
+            
+            for p in all_products:
                 # Clean up ObjectId
-                for p in products:
-                    if "_id" in p:
-                        p["id"] = str(p["_id"])
-                        del p["_id"]
-
-                result[category] = products
-
-            logger.info(f"Found {len(result)} categories with products")
+                if "_id" in p:
+                    p["id"] = str(p["_id"])
+                    del p["_id"]
+                
+                category = p.get("category", "other") or "other"
+                
+                if category not in result:
+                    result[category] = []
+                
+                # Limit products per category
+                if len(result[category]) < products_per_category:
+                    result[category].append(p)
+            
+            logger.info(f"Grouped into {len(result)} categories: {list(result.keys())}")
             return result
 
         except Exception as e:
