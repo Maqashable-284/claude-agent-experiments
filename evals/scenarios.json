@@ -1,0 +1,109 @@
+{
+    "scenarios": [
+        {
+            "id": "greeting_01",
+            "category": "greeting",
+            "input": "გამარჯობა",
+            "expected_behavior": "მოკლე მისალმება ქართულად, tool არ გამოიყენოს",
+            "max_time_seconds": 5
+        },
+        {
+            "id": "greeting_02",
+            "category": "greeting",
+            "input": "მადლობა",
+            "expected_behavior": "თავაზიანი პასუხი, tool არ გამოიყენოს",
+            "max_time_seconds": 5
+        },
+        {
+            "id": "greeting_03",
+            "category": "greeting",
+            "input": "კარგად",
+            "expected_behavior": "დამშვიდობება ქართულად",
+            "max_time_seconds": 5
+        },
+        {
+            "id": "product_search_01",
+            "category": "product_search",
+            "input": "რა პროტეინები გაქვთ?",
+            "expected_behavior": "პროდუქტების სია ფასებით და URLs-ით",
+            "max_time_seconds": 12
+        },
+        {
+            "id": "product_search_02",
+            "category": "product_search",
+            "input": "კრეატინი მაჩვენე",
+            "expected_behavior": "კრეატინის პროდუქტები ფასებით",
+            "max_time_seconds": 12
+        },
+        {
+            "id": "product_search_03",
+            "category": "product_search",
+            "input": "რა ფასია Gold Standard?",
+            "expected_behavior": "კონკრეტული პროდუქტის ფასი და URL",
+            "max_time_seconds": 10
+        },
+        {
+            "id": "recommendation_01",
+            "category": "recommendation",
+            "input": "კუნთის მასისთვის რა მირჩევ?",
+            "expected_behavior": "Quick-Buy ფორმატი: 🥇🥈🥉, 3 პროდუქტი URLs-ით",
+            "max_time_seconds": 15
+        },
+        {
+            "id": "recommendation_02",
+            "category": "recommendation",
+            "input": "დამწყებისთვის რა პროტეინი ჯობია?",
+            "expected_behavior": "3 ვარიანტი შედარებით, URLs-ით",
+            "max_time_seconds": 15
+        },
+        {
+            "id": "recommendation_03",
+            "category": "recommendation",
+            "input": "ფასების მიხედვით შეადარე პროტეინები",
+            "expected_behavior": "შედარების ცხრილი ან სია ფასებით",
+            "max_time_seconds": 15
+        },
+        {
+            "id": "science_01",
+            "category": "science",
+            "input": "როგორ მუშაობს კრეატინი?",
+            "expected_behavior": "Bio-Bridge ფორმატი: მექანიზმი + შედეგი, tool არ გამოიყენოს",
+            "max_time_seconds": 8
+        },
+        {
+            "id": "science_02",
+            "category": "science",
+            "input": "რა განსხვავებაა Whey და Isolate პროტეინს შორის?",
+            "expected_behavior": "განმარტება ქართულად, knowledge-დან",
+            "max_time_seconds": 8
+        },
+        {
+            "id": "science_03",
+            "category": "science",
+            "input": "რატომ მჭირდება BCAA?",
+            "expected_behavior": "Bio-Bridge ფორმატი, მოკლე და ინფორმაციული",
+            "max_time_seconds": 8
+        },
+        {
+            "id": "edge_case_01",
+            "category": "edge_case",
+            "input": "iPhone გაქვთ?",
+            "expected_behavior": "თავაზიანი უარი, ახსნა რომ სპორტული კვებაა",
+            "max_time_seconds": 5
+        },
+        {
+            "id": "edge_case_02",
+            "category": "edge_case",
+            "input": "მენფისის პროტეინი რა ფასია?",
+            "expected_behavior": "ვერ ვიპოვე, არ მოიგონოს არარსებული პროდუქტი",
+            "max_time_seconds": 10
+        },
+        {
+            "id": "edge_case_03",
+            "category": "edge_case",
+            "input": "What proteins do you have?",
+            "expected_behavior": "ქართულად უპასუხოს, არა ინგლისურად",
+            "max_time_seconds": 10
+        }
+    ]
+}
