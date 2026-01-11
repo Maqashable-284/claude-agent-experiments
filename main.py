@@ -343,6 +343,7 @@ async def chat(request: ChatRequest):
                 "user_id": request.user_id,
                 "success": False,
                 "error": "internal_error"
+            }
         )
 
 
