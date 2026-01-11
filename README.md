@@ -344,10 +344,39 @@ data: {}
 }
 ```
 
+## 🔧 v4.3 Updates (2026-01-11)
+
+### SSE Multi-line Encoding Fix
+
+**პრობლემა:** Frontend widget-ები ვერ აჩვენებდნენ პროდუქტების სრულ ინფორმაციას. 
+SSE streaming-ში multi-line content იკარგებოდა.
+
+**მიზეზი:** SSE სტანდარტით თითოეული ხაზი `data:` prefix-ით უნდა იყოს:
+```
+data: line 1
+data: line 2
+data: line 3
+\n\n
+```
+
+**გადაწყვეტა:** `encode_sse_data()` helper function:
+
+```python
+# main.py
+def encode_sse_data(data: str) -> str:
+    """Encode multi-line data for SSE format."""
+    lines = data.split('\n')
+    encoded_lines = [f"data: {line}" for line in lines]
+    return '\n'.join(encoded_lines) + '\n\n'
+```
+
+**შედეგი:** ✅ Frontend widgets სრულად აჩვენებენ პროდუქტების ინფორმაციას.
+
 ---
 
 ## 🔗 Related Repositories
 
+- [scoop-vercel](https://github.com/Maqashable-284/scoop-vercel) - Next.js 15 Frontend (Cloud Run)
 - [scoop-widget](https://github.com/Maqashable-284/scoop-widget) - React Chat Widget (Streaming)
 - [scoop-chainlit](https://github.com/Maqashable-284/scoop-chainlit) - Chainlit Web UI
 
