@@ -221,6 +221,50 @@ class ScoopAgent:
             # Raise proper exception for handler
             raise AgentError(f"Chat processing failed: {e}") from e
 
+    async def chat_stream(self, user_id: str, message: str):
+        """
+        Process a chat message with streaming response.
+        
+        Yields text chunks as they arrive from Claude SDK.
+        
+        Args:
+            user_id: Unique identifier for the user session
+            message: User's message in Georgian or English
+            
+        Yields:
+            Text chunks as they arrive
+            
+        Raises:
+            SessionError: If session creation fails
+            AgentError: If chat processing fails
+        """
+        client = await self._get_or_create_client(user_id)
+
+        try:
+            # Send message to agent
+            logger.info(f"Streaming query to Claude SDK for user {user_id}")
+            await client.query(message)
+
+            # Stream response chunks
+            async for msg in client.receive_response():
+                if isinstance(msg, AssistantMessage):
+                    for block in msg.content:
+                        if isinstance(block, TextBlock):
+                            # Yield the text chunk
+                            yield block.text
+
+            # Update session activity
+            if user_id in self._sessions:
+                self._sessions[user_id].update_activity()
+
+        except SessionError:
+            raise
+
+        except Exception as e:
+            logger.error(f"Agent stream error for user {user_id}: {e}")
+            await self.clear_session(user_id)
+            raise AgentError(f"Stream processing failed: {e}") from e
+
     async def clear_session(self, user_id: str) -> bool:
         """
         Clear user's conversation session.

@@ -14,7 +14,7 @@ from collections import defaultdict
 
 from fastapi import FastAPI, Request, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel, Field
 
 from config import get_settings
@@ -343,8 +343,52 @@ async def chat(request: ChatRequest):
                 "user_id": request.user_id,
                 "success": False,
                 "error": "internal_error"
-            }
         )
+
+
+@app.post("/chat/stream")
+async def chat_stream(request: ChatRequest):
+    """
+    Streaming chat endpoint using Server-Sent Events (SSE).
+    
+    Returns real-time token-by-token responses from the agent.
+    """
+    async def event_generator():
+        try:
+            agent = get_agent()
+            logger.info(f"Stream chat: {request.user_id} - {request.message[:50]}...")
+            
+            # Stream response chunks
+            full_response = ""
+            async for chunk in agent.chat_stream(request.user_id, request.message):
+                full_response += chunk
+                # Send as SSE event
+                yield f"data: {chunk}\n\n"
+            
+            # Send completion event with metadata
+            yield f"event: done\ndata: {{}}\n\n"
+            
+        except SessionError as e:
+            logger.warning(f"Stream session error: {e}")
+            yield f"event: error\ndata: {{\"error\": \"session_error\", \"message\": \"სესია ვერ მოიძებნა\"}}\n\n"
+            
+        except AgentError as e:
+            logger.error(f"Stream agent error: {e}")
+            yield f"event: error\ndata: {{\"error\": \"agent_error\", \"message\": \"აგენტის შეცდომა\"}}\n\n"
+            
+        except Exception as e:
+            logger.exception(f"Stream unexpected error: {e}")
+            yield f"event: error\ndata: {{\"error\": \"internal_error\", \"message\": \"შეცდომა მოხდა\"}}\n\n"
+    
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no"
+        }
+    )
 
 
 @app.post("/session/clear")
