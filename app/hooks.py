@@ -128,7 +128,7 @@ async def validate_user_prompt(
                 "hookSpecificOutput": {
                     "hookEventName": "UserPromptSubmit",
                     "permissionDecision": "deny",
-                    "permissionDecisionReason": "რით შემიძლია დაგეხმაროთ სპორტულ კვებასთან დაკავშირებით?",
+                    "permissionDecisionReason": "🏋️ სპორტული კვება - აი, ეს არის ჩემი თემა! მითხარი, რა მიზანი გაქვს - კუნთის ზრდა, წონის დაკლება, თუ ენერგიის მომატება?",
                 }
             }
 
