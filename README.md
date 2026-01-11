@@ -306,13 +306,30 @@ python-dotenv==1.0.1
 |----------|--------|-------------|
 | `/` | GET | Service info |
 | `/health` | GET | Health check + DB status |
-| `/chat` | POST | Chat with agent |
+| `/chat` | POST | Chat with agent (full response) |
+| `/chat/stream` | POST | **Streaming** chat (SSE) |
+| `/session/clear` | POST | Clear user session |
+| `/sessions` | GET | List active sessions |
 
 ### Chat Request
 ```bash
 curl -X POST https://scoop-ai-sdk-xxx.run.app/chat \
   -H "Content-Type: application/json" \
   -d '{"user_id":"user123","message":"პროტეინი მაინტერესებს"}'
+```
+
+### Streaming Request (SSE)
+```bash
+curl -X POST https://scoop-ai-sdk-xxx.run.app/chat/stream \
+  -H "Content-Type: application/json" \
+  -d '{"user_id":"user123","message":"პროტეინი მაინტერესებს"}'
+
+# Response: Server-Sent Events
+data: გთა
+data: ვაზობთ
+data: 3 საუკეთესო...
+event: done
+data: {}
 ```
 
 ### Response Format
@@ -331,6 +348,7 @@ curl -X POST https://scoop-ai-sdk-xxx.run.app/chat \
 
 ## 🔗 Related Repositories
 
+- [scoop-widget](https://github.com/Maqashable-284/scoop-widget) - React Chat Widget (Streaming)
 - [scoop-chainlit](https://github.com/Maqashable-284/scoop-chainlit) - Chainlit Web UI
 
 ---
